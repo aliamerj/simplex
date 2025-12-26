@@ -1,13 +1,13 @@
 import { useState, useCallback } from 'react';
 import type { ProblemData, Solution } from '@/types';
 import { solveArtificial } from '@/logic/artificialSolver';
-import { getExampleProblem3 } from '@/logic/utils';
+import { getExampleProblem2 } from '@/logic/utils';
 import { solveSimplex } from '@/logic/simplexSolver';
 
 export const useSimplexSolver = (initialProblem?: ProblemData) => {
   const [fractions, setFractions] = useState<boolean>(false);
   const [solution, setSolution] = useState<Solution>(() => {
-    const problem = initialProblem ?? getExampleProblem3();
+    const problem = initialProblem ?? getExampleProblem2();
 
     return {
       problem,

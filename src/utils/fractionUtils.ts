@@ -48,8 +48,11 @@ export const formatValue = (
   if (Math.abs(num - Math.round(num)) < 1e-6) {
     return Math.round(num).toString();
   }
+  if (num) {
+    return num.toFixed(4).replace(/\.?0+$/, '');
+  }
 
-  return num.toFixed(4).replace(/\.?0+$/, '');
+  return ""
 };
 
 export const formatTableauValue = (value: number, useFractions: boolean): string | Fraction => {

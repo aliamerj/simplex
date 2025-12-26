@@ -25,10 +25,6 @@ export const validateProblemData = (problem: ProblemData): string[] => {
     errors.push('Right-hand side values count must match number of constraints');
   }
 
-  if (problem.constraintSigns.length !== problem.numConstraints) {
-    errors.push('Constraint signs count must match number of constraints');
-  }
-
   // Check constraint matrix dimensions
   for (let i = 0; i < problem.constraintMatrix.length; i++) {
     if (problem.constraintMatrix[i].length !== problem.numVariables) {

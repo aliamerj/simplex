@@ -207,7 +207,7 @@ function computeBasisSolution(
     if (basisIndex < numVariables) {
       // Find the column in this row that has 1
       for (let col = 0; col < matrix[row].length - 1; col++) {
-        if (Math.abs(matrix[row][col] - 1) < 1e-10 && col === basisIndex) {
+        if (matrix[row][col] - 1 < 1e-10 && col === basisIndex) {
           solution[`x${basisIndex + 1}`] = matrix[row][matrix[row].length - 1];
           break;
         }
@@ -293,7 +293,7 @@ export function solveGauss(
 
     // Normalize the pivot row by the pivot element
     const pivot = coeffs[i][minor];
-    if (Math.abs(pivot) > 1e-10) {
+    if (pivot > 1e-10) {
       for (let j = 0; j < m; j++) {
         coeffs[i][j] /= pivot;
       }

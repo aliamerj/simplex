@@ -15,18 +15,18 @@ export function extractColumnsForDisplay(
 ): number[][] {
   const result: number[][] = [];
   const lastCol = matrix[0].length - 1;
-  
+
   for (let i = 0; i < matrix.length; i++) {
     const row: number[] = [];
-    
+
     for (const colIdx of displayIndices) {
       row.push(matrix[i][colIdx]);
     }
-    
+
     row.push(matrix[i][lastCol]);
     result.push(row);
   }
-  
+
   return result;
 }
 
@@ -60,12 +60,12 @@ export function performPivot(
 ): number[][] {
   const result = matrix.map(row => [...row]);
   const pivotElement = result[pivotRow][pivotCol];
-  
+
   // Normalize pivot row
   for (let j = 0; j < result[pivotRow].length; j++) {
     result[pivotRow][j] /= pivotElement;
   }
-  
+
   // Eliminate pivot column from other rows
   for (let i = 0; i < result.length; i++) {
     if (i !== pivotRow) {
@@ -75,7 +75,7 @@ export function performPivot(
       }
     }
   }
-  
+
   return result;
 }
 
@@ -92,6 +92,7 @@ export function buildMatrix(problem: ProblemData): number[][] {
   return matrix;
 }
 
-export const getExampleProblem = (): ProblemData => ({ numVariables: 4, numConstraints: 2, objectiveCoefficients: [-2, -1, -3, -1], constraintMatrix: [[1, 2, 5, -1], [1, -1, -1, 2],], rightHandSide: [4, 1], constraintSigns: ['=', '='], objectiveType: 'min', });
-export const getExampleProblem2 = (): ProblemData => ({ numVariables: 5, numConstraints: 3, objectiveCoefficients: [-1, 1, 0, 0, 0], constraintMatrix: [ [2, -4, -1, 1, 0], [4, -3, -1, 1, 1], [1, 4, 1, 0, 1] ], rightHandSide: [-3, 6, 15], constraintSigns: ['=', '=', '='], objectiveType: 'min', });
-export const getExampleProblem3 = (): ProblemData => ({ numVariables: 3, numConstraints: 2, objectiveCoefficients: [-1, 2, -1], constraintMatrix: [[1, 4, 1], [1, -2, -1]], rightHandSide: [5, -1], constraintSigns: ['=', '='], objectiveType: 'min', });
+export const getExampleProblem4 = (): ProblemData => ({ numVariables: 3, numConstraints: 3, objectiveCoefficients: [-1, 1, 0], constraintMatrix: [[-1, 3, 0], [1, -1, 0], [2, 1, 0]], rightHandSide: [6, 3, 9], objectiveType: 'min', });
+export const getExampleProblem = (): ProblemData => ({ numVariables: 4, numConstraints: 2, objectiveCoefficients: [-2, -1, -3, -1], constraintMatrix: [[1, 2, 5, -1], [1, -1, -1, 2],], rightHandSide: [4, 1], objectiveType: 'min', });
+export const getExampleProblem2 = (): ProblemData => ({ numVariables: 5, numConstraints: 3, objectiveCoefficients: [-1, 1, 0, 0, 0], constraintMatrix: [[2, -4, -1, 1, 0], [4, -3, -1, 1, 1], [1, 4, 1, 0, 1]], rightHandSide: [-3, 6, 15], objectiveType: 'min', });
+export const getExampleProblem3 = (): ProblemData => ({ numVariables: 3, numConstraints: 2, objectiveCoefficients: [-1, 2, -1], constraintMatrix: [[1, 4, 1], [1, -2, -1]], rightHandSide: [5, -1], objectiveType: 'min', });

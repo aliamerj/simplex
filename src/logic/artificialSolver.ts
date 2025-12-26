@@ -63,7 +63,7 @@ export function solveArtificial(
 
     if (!hasNegative) {
       const artificialObj = z[z.length - 1];
-      if (Math.abs(artificialObj) > 1e-10) {
+      if (artificialObj > 1e-10) {
         return {
           steps,
           objective: NaN,

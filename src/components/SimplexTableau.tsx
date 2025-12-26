@@ -154,7 +154,7 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
                       <td
                         key={colIndex}
                         className={`border border-gray-300 dark:border-gray-600 px-4 py-3 ${isPivotCell
-                            ? 'bg-gradient-to-br from-yellow-200 to-yellow-100 dark:from-yellow-900/50 dark:to-yellow-800/50 font-bold'
+                            ? 'bg-linear-to-br from-yellow-200 to-yellow-100 dark:from-yellow-900/50 dark:to-yellow-800/50 font-bold'
                             : colIndex % 2 === 0
                               ? 'bg-white/50 dark:bg-gray-900/50'
                               : ''
@@ -187,7 +187,7 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
             })}
 
             {/* Z Row */}
-            <tr className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-t-2 border-gray-300 dark:border-gray-600">
+            <tr className="bg-linear-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-t-2 border-gray-300 dark:border-gray-600">
               <td className="sticky left-0 z-10 border border-gray-300 dark:border-gray-600 px-4 py-3 font-bold bg-blue-50 dark:bg-blue-900/20">
                 Z
               </td>
