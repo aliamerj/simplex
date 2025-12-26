@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText, Calculator, BarChart3 } from 'lucide-react';
@@ -6,7 +6,6 @@ import { ProblemInput } from '@/components/ProblemInput';
 import { SimplexSolver } from '@/components/SimplexSolver';
 import { useSimplexSolver } from '@/hooks/useSimplexSolver';
 import type { ProblemData } from '@/types';
-import { runSimplexTest } from './debug/simplexTest';
 import { GraphicalSolver } from './components/GraphicalSolver';
 
 const App: React.FC = () => {
@@ -18,10 +17,6 @@ const App: React.FC = () => {
   const handleProblemUpdate = (problem: ProblemData) => {
     setLocalProblem(problem);
   };
-
-  useEffect(() => {
-    runSimplexTest()
-  }, [])
 
   return (
     <div className="min-h-screen bg-linear-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
