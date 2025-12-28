@@ -26,65 +26,226 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
   const [errors, setErrors] = useState<string[]>([]);
   const [isObjectiveExpanded, setIsObjectiveExpanded] = useState(false);
 
+  // Store input values as strings for display, only convert to numbers on blur
+  const [inputValues, setInputValues] = useState<{
+    objective: string[];
+    constraints: string[][];
+    rhs: string[];
+    numVariables: string;
+    numConstraints: string;
+  }>({
+    objective: problem.objectiveCoefficients.map(String),
+    constraints: problem.constraintMatrix.map(row => row.map(String)),
+    rhs: problem.rightHandSide.map(String),
+    numVariables: String(problem.numVariables),
+    numConstraints: String(problem.numConstraints)
+  });
+
   useEffect(() => {
     setLocalProblem(problem);
+    setInputValues({
+      objective: problem.objectiveCoefficients.map(String),
+      constraints: problem.constraintMatrix.map(row => row.map(String)),
+      rhs: problem.rightHandSide.map(String),
+      numVariables: String(problem.numVariables),
+      numConstraints: String(problem.numConstraints)
+    });
   }, [problem]);
 
   const handleInputChange = (
-    type: 'objective' | 'constraint' | 'rhs',
-    index: number,
+    type: 'objective' | 'constraint' | 'rhs' | 'numVariables' | 'numConstraints',
+    index: number | null,
     subIndex: number | null,
     value: string
   ) => {
-    const newProblem = { ...localProblem };
-
-    try {
-      const numValue = parseFloat(value);
-
-      if (type === 'objective') {
-        const newCoeffs = [...newProblem.objectiveCoefficients];
-        newCoeffs[index] = isNaN(numValue) ? 0 : numValue;
-        newProblem.objectiveCoefficients = newCoeffs;
-      } else if (type === 'constraint') {
-        const newMatrix = newProblem.constraintMatrix.map(row => [...row]);
-        newMatrix[index][subIndex!] = isNaN(numValue) ? 0 : numValue;
-        newProblem.constraintMatrix = newMatrix;
-      } else if (type === 'rhs') {
-        const newRHS = [...newProblem.rightHandSide];
-        newRHS[index] = isNaN(numValue) ? 0 : numValue;
-        newProblem.rightHandSide = newRHS;
-      }
-
-
-      setLocalProblem(newProblem);
-    } catch (error) {
-      console.error('Invalid input:', error);
+    // Only update the display value for now
+    if (type === 'objective' && index !== null) {
+      setInputValues(prev => ({
+        ...prev,
+        objective: prev.objective.map((v, i) => i === index ? value : v)
+      }));
+    } else if (type === 'constraint' && index !== null && subIndex !== null) {
+      setInputValues(prev => ({
+        ...prev,
+        constraints: prev.constraints.map((row, i) =>
+          i === index ? row.map((v, j) => j === subIndex ? value : v) : row
+        )
+      }));
+    } else if (type === 'rhs' && index !== null) {
+      setInputValues(prev => ({
+        ...prev,
+        rhs: prev.rhs.map((v, i) => i === index ? value : v)
+      }));
+    } else if (type === 'numVariables') {
+      setInputValues(prev => ({
+        ...prev,
+        numVariables: value
+      }));
+    } else if (type === 'numConstraints') {
+      setInputValues(prev => ({
+        ...prev,
+        numConstraints: value
+      }));
     }
   };
 
-  const handleDimensionChange = (newNumVariables: number, newNumConstraints: number) => {
-    const vars = Math.min(Math.max(1, newNumVariables), 16);
-    const consts = Math.min(Math.max(1, newNumConstraints), 16);
+  const handleInputBlur = (
+    type: 'objective' | 'constraint' | 'rhs' | 'numVariables' | 'numConstraints',
+    index: number | null,
+    subIndex: number | null
+  ) => {
+    // Get the current display value
+    let displayValue = '';
 
-    const newProblem: ProblemData = {
-      numVariables: vars,
-      numConstraints: consts,
-      objectiveCoefficients: Array(vars).fill(0),
-      constraintMatrix: Array(consts)
-        .fill(null)
-        .map(() => Array(vars).fill(0)),
-      rightHandSide: Array(consts).fill(0),
-      objectiveType: localProblem.objectiveType,
-    };
+    // Handle dimension types first
+    if (type === 'numVariables') {
+      displayValue = inputValues.numVariables;
+      const numValue = displayValue === '' ? 1 : parseFloat(displayValue);
+      const finalValue = Math.min(Math.max(1, isNaN(numValue) ? 1 : numValue), 16);
+
+      const vars = finalValue;
+      const consts = localProblem.numConstraints;
+
+      const updatedProblem: ProblemData = {
+        numVariables: vars,
+        numConstraints: consts,
+        objectiveCoefficients: Array(vars).fill(0),
+        constraintMatrix: Array(consts)
+          .fill(null)
+          .map(() => Array(vars).fill(0)),
+        rightHandSide: Array(consts).fill(0),
+        objectiveType: localProblem.objectiveType,
+      };
+
+      setLocalProblem(updatedProblem);
+      setInputValues(prev => ({
+        ...prev,
+        numVariables: String(vars),
+        objective: Array(vars).fill('0'),
+        constraints: Array(consts).fill(null).map(() => Array(vars).fill('0'))
+      }));
+      return;
+    }
+
+    if (type === 'numConstraints') {
+      displayValue = inputValues.numConstraints;
+      const numValue = displayValue === '' ? 1 : parseFloat(displayValue);
+      const finalValue = Math.min(Math.max(1, isNaN(numValue) ? 1 : numValue), 16);
+
+      const vars = localProblem.numVariables;
+      const consts = finalValue;
+
+      const updatedProblem: ProblemData = {
+        numVariables: vars,
+        numConstraints: consts,
+        objectiveCoefficients: Array(vars).fill(0),
+        constraintMatrix: Array(consts)
+          .fill(null)
+          .map(() => Array(vars).fill(0)),
+        rightHandSide: Array(consts).fill(0),
+        objectiveType: localProblem.objectiveType,
+      };
+
+      setLocalProblem(updatedProblem);
+      setInputValues(prev => ({
+        ...prev,
+        numConstraints: String(consts),
+        constraints: Array(consts).fill(null).map(() => Array(vars).fill('0')),
+        rhs: Array(consts).fill('0')
+      }));
+      return;
+    }
+
+    // Handle other types (objective, constraint, rhs)
+    if (type === 'objective' && index !== null) {
+      displayValue = inputValues.objective[index];
+    } else if (type === 'constraint' && index !== null && subIndex !== null) {
+      displayValue = inputValues.constraints[index][subIndex];
+    } else if (type === 'rhs' && index !== null) {
+      displayValue = inputValues.rhs[index];
+    } else {
+      return; // Invalid parameters
+    }
+
+    // Parse the value, use appropriate default if empty or invalid
+    const numValue = displayValue === '' ? 0 : parseFloat(displayValue);
+    const finalValue = isNaN(numValue) ? 0 : numValue;
+
+    // Update the actual problem data
+    const newProblem = { ...localProblem };
+
+    if (type === 'objective' && index !== null) {
+      const newCoeffs = [...newProblem.objectiveCoefficients];
+      newCoeffs[index] = finalValue;
+      newProblem.objectiveCoefficients = newCoeffs;
+    } else if (type === 'constraint' && index !== null && subIndex !== null) {
+      const newMatrix = newProblem.constraintMatrix.map(row => [...row]);
+      newMatrix[index][subIndex] = finalValue;
+      newProblem.constraintMatrix = newMatrix;
+    } else if (type === 'rhs' && index !== null) {
+      const newRHS = [...newProblem.rightHandSide];
+      newRHS[index] = finalValue;
+      newProblem.rightHandSide = newRHS;
+    }
 
     setLocalProblem(newProblem);
-    setErrors([]);
+
+    // Update display value to show the parsed number (formatted)
+    if (type === 'objective' && index !== null) {
+      setInputValues(prev => ({
+        ...prev,
+        objective: prev.objective.map((v, i) => i === index ? String(finalValue) : v)
+      }));
+    } else if (type === 'constraint' && index !== null && subIndex !== null) {
+      setInputValues(prev => ({
+        ...prev,
+        constraints: prev.constraints.map((row, i) =>
+          i === index ? row.map((v, j) => j === subIndex ? String(finalValue) : v) : row
+        )
+      }));
+    } else if (type === 'rhs' && index !== null) {
+      setInputValues(prev => ({
+        ...prev,
+        rhs: prev.rhs.map((v, i) => i === index ? String(finalValue) : v)
+      }));
+    }
   };
 
   const handleSubmit = () => {
-    const validationErrors = validateProblemData(localProblem);
+    // First, process all input values from display strings to actual numbers
+    const updatedProblem = { ...localProblem };
+
+    // Process objective coefficients
+    updatedProblem.objectiveCoefficients = inputValues.objective.map(val => {
+      const num = val === '' ? 0 : parseFloat(val);
+      return isNaN(num) ? 0 : num;
+    });
+
+    // Process constraint matrix
+    updatedProblem.constraintMatrix = inputValues.constraints.map(row =>
+      row.map(val => {
+        const num = val === '' ? 0 : parseFloat(val);
+        return isNaN(num) ? 0 : num;
+      })
+    );
+
+    // Process RHS
+    updatedProblem.rightHandSide = inputValues.rhs.map(val => {
+      const num = val === '' ? 0 : parseFloat(val);
+      return isNaN(num) ? 0 : num;
+    });
+
+    // Process dimensions
+    updatedProblem.numVariables = inputValues.numVariables === '' ? 1 :
+      Math.min(Math.max(1, parseInt(inputValues.numVariables) || 1), 16);
+    updatedProblem.numConstraints = inputValues.numConstraints === '' ? 1 :
+      Math.min(Math.max(1, parseInt(inputValues.numConstraints) || 1), 16);
+
+    setLocalProblem(updatedProblem);
+
+    const validationErrors = validateProblemData(updatedProblem);
     if (validationErrors.length === 0) {
-      onUpdate(localProblem);
+      onUpdate(updatedProblem);
       setErrors([]);
       setActiveTab("simplex");
     } else {
@@ -127,14 +288,10 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
                 <div className="relative flex-1">
                   <Input
                     id="numVariables"
-                    type="number"
-                    min="1"
-                    max="16"
-                    value={localProblem.numVariables}
-                    onChange={(e) => handleDimensionChange(
-                      parseInt(e.target.value) || 1,
-                      localProblem.numConstraints
-                    )}
+                    type="text"
+                    value={inputValues.numVariables}
+                    onChange={(e) => handleInputChange('numVariables', null, null, e.target.value)}
+                    onBlur={() => handleInputBlur('numVariables', null, null)}
                     className="pr-12 text-sm sm:text-base"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-xs sm:text-sm">
@@ -156,14 +313,10 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
                 <div className="relative flex-1">
                   <Input
                     id="numConstraints"
-                    type="number"
-                    min="1"
-                    max="16"
-                    value={localProblem.numConstraints}
-                    onChange={(e) => handleDimensionChange(
-                      localProblem.numVariables,
-                      parseInt(e.target.value) || 1
-                    )}
+                    type="text"
+                    value={inputValues.numConstraints}
+                    onChange={(e) => handleInputChange('numConstraints', null, null, e.target.value)}
+                    onBlur={() => handleInputBlur('numConstraints', null, null)}
                     className="pr-12 text-sm sm:text-base"
                   />
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-xs sm:text-sm">
@@ -229,10 +382,10 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
                       )}
                       <div className="flex items-center bg-white dark:bg-gray-800 px-2 sm:px-3 py-1 sm:py-2 rounded-lg border min-w-25 sm:min-w-30">
                         <Input
-                          type="number"
-                          step="0.01"
-                          value={coeff}
+                          type="text"
+                          value={inputValues.objective[index] || ''}
                           onChange={(e) => handleInputChange('objective', index, null, e.target.value)}
+                          onBlur={() => handleInputBlur('objective', index, null)}
                           className="w-full text-center border-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto text-sm sm:text-base"
                           placeholder="0"
                         />
@@ -295,10 +448,10 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
                       {Array.from({ length: localProblem.numVariables }).map((_, colIndex) => (
                         <TableCell key={colIndex} className="p-1 sm:p-2">
                           <Input
-                            type="number"
-                            step="0.01"
-                            value={localProblem.constraintMatrix[rowIndex]?.[colIndex] || 0}
+                            type="text"
+                            value={inputValues.constraints[rowIndex]?.[colIndex] || ''}
                             onChange={(e) => handleInputChange('constraint', rowIndex, colIndex, e.target.value)}
+                            onBlur={() => handleInputBlur('constraint', rowIndex, colIndex)}
                             className="w-full text-center text-xs sm:text-sm h-8 sm:h-10"
                             placeholder="0"
                           />
@@ -315,10 +468,10 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
 
                       <TableCell className="p-1 sm:p-2">
                         <Input
-                          type="number"
-                          step="0.01"
-                          value={localProblem.rightHandSide[rowIndex] || 0}
+                          type="text"
+                          value={inputValues.rhs[rowIndex] || ''}
                           onChange={(e) => handleInputChange('rhs', rowIndex, null, e.target.value)}
+                          onBlur={() => handleInputBlur('rhs', rowIndex, null)}
                           className="w-full text-center bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-xs sm:text-sm h-8 sm:h-10"
                           placeholder="0"
                         />

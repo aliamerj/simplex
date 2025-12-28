@@ -1,20 +1,29 @@
 import type { ProblemData, Solution, Step } from "@/types";
-import { buildMatrix, extractColumnsForDisplay, extractZForDisplay, neg, performPivot, pos } from "./utils";
+import { buildMatrix, cloneA, cloneM, extractColumnsForDisplay, extractZForDisplay, neg, performPivot, pos } from "./utils";
 
 export function solveSimplex(problem: ProblemData, baseVector: number[]): Solution {
+
+  // Build initial simplex tableau from the problem
   let matrix = buildMatrix(problem);
+
+  // Basis array will store indices of basic variables
   const basis: number[] = [];
 
+  // Extract basis indices from baseVector
+  // baseVector[i] === 1 means variable xi is basic
   for (let i = 0; i < baseVector.length; i++) {
     if (baseVector[i] === 1) {
       basis.push(i);
     }
   }
+
+  // If number of basic variables ≠ number of constraints,
+  // we do not have a valid initial basis → infeasible
   if (basis.length !== problem.numConstraints) {
     return {
       steps: [{
         solutionType: 'infeasible',
-        matrix:[],
+        matrix: [],
         z: [],
         potentialPivots: [],
         colsVariables: [],
@@ -27,16 +36,25 @@ export function solveSimplex(problem: ProblemData, baseVector: number[]): Soluti
     };
   }
 
+  // Apply Gauss-Jordan elimination to obtain canonical form
+  // Ensures:
+  //  - basic columns form identity matrix
+  //  - RHS values are correct
   const matrixAfterGauss = solveGauss(
     matrix,
     problem.numConstraints,
     matrix[0].length,  // includes RHS
     basis
   );
+
+  // Run the main simplex iteration
   const result = doSolveSimplex(problem, matrixAfterGauss, basis)
 
-
-  return { ...result, objective: result.objective * (problem.objectiveType === 'min' ? -1 : 1) }
+  // Adjust objective sign if the problem is minimization
+  return {
+    ...result,
+    objective: result.objective * (problem.objectiveType === 'min' ? -1 : 1)
+  }
 }
 
 
@@ -48,27 +66,29 @@ export function doSolveSimplex(
 ): Solution {
   const steps: Step[] = [];
 
-  // Clone the matrix and basis
-  let matrix = initialMatrix.map(row => [...row]);
+  // Clone matrix and basis to avoid mutating input
+  let matrix = cloneM(initialMatrix);
   let basis = [...initialBasis];
 
-  // Create target function from original objective coefficients
-  // Teacher's targetFunction has length = matrix columns (including RHS column)
+  // Number of columns including RHS
   const totalCols = matrix[0].length;
+
+  // Initialize target function Z
   let targetFunction = new Array(totalCols).fill(0);
 
-  // Set objective coefficients for original variables
+
+  // Set coefficients of original objective function
   for (let i = 0; i < problem.numVariables; i++) {
     targetFunction[i] = problem.objectiveCoefficients[i];
   }
 
-  // Last element is objective value (starts at 0)
+  // RHS of target function starts at 0
   targetFunction[totalCols - 1] = 0;
 
-  // Compute initial target function (teacher's ComputeTargetFunction)
+  // Transform target function into canonical form
   targetFunction = computeTargetFunction(targetFunction, matrix, basis);
 
-  // Get non-basic variables for display (oderIndexNoBasis)
+  // Determine non-basic variables (used for display)
   const nonBasicVariables: number[] = [];
   for (let i = 0; i < totalCols - 1; i++) {
     if (!basis.includes(i)) {
@@ -76,18 +96,17 @@ export function doSolveSimplex(
     }
   }
 
-  const oderIndexNoBasis = [...nonBasicVariables];
+  // Labels for basic variables (rows)
   let rowVars = basis.map(i => `x${i + 1}`);
 
-  let stepCount = 0;
-
   while (true) {
-    // TEACHER'S SIMPLEX: Find potential pivots
+    // Store all possible pivot positions
     const potentialPivots: [number, number][] = [];
     let hasNegative = false;
     const lastCol = matrix[0].length - 1;
 
-    // Check all columns except the last one (RHS/objective)
+    // Check target function for negative coefficients
+    // Negative coefficient → solution not optimal
     for (let col = 0; col < targetFunction.length - 1; col++) {
       if (neg(targetFunction[col])) {
         hasNegative = true;
@@ -96,6 +115,7 @@ export function doSolveSimplex(
         let minRow = -1;
         let minRatio = Infinity;
 
+        // Minimum ratio test to select leaving variable
         for (let row = 0; row < basis.length; row++) {
           if (pos(matrix[row][col])) {
             const ratio = matrix[row][lastCol] / matrix[row][col];
@@ -106,15 +126,16 @@ export function doSolveSimplex(
           }
         }
 
+        // Valid pivot found
         if (minRow !== -1) {
           potentialPivots.push([minRow, col]);
         } else {
-          // Unbounded
+          // No valid pivot → unbounded problem
           steps.push({
-            matrix: extractColumnsForDisplay(matrix, oderIndexNoBasis),
-            z: extractZForDisplay(targetFunction, oderIndexNoBasis),
+            matrix: extractColumnsForDisplay(matrix, nonBasicVariables),
+            z: extractZForDisplay(targetFunction, nonBasicVariables),
             potentialPivots: [],
-            colsVariables: oderIndexNoBasis.map(i => `x${i + 1}`),
+            colsVariables: nonBasicVariables.map(i => `x${i + 1}`),
             rowVariables: rowVars,
             solutionType: 'unbounded'
           });
@@ -130,53 +151,52 @@ export function doSolveSimplex(
       }
     }
 
-    // Save step BEFORE pivot
+
+    // Save tableau BEFORE pivot
     steps.push({
-      matrix: extractColumnsForDisplay(matrix, oderIndexNoBasis),
-      z: extractZForDisplay(targetFunction, oderIndexNoBasis),
+      matrix: extractColumnsForDisplay(matrix, nonBasicVariables),
+      z: extractZForDisplay(targetFunction, nonBasicVariables),
       potentialPivots: [...potentialPivots],
-      colsVariables: oderIndexNoBasis.map(i => `x${i + 1}`),
+      colsVariables: nonBasicVariables.map(i => `x${i + 1}`),
       rowVariables: rowVars,
       solutionType: hasNegative ? 'not-solved' : 'optimal'
     });
 
-    // If no negative coefficients, we're optimal
+
+    // No negative coefficients → optimal solution reached
     if (!hasNegative) {
       break;
     }
 
-    // If no potential pivots but has negative, problem is unbounded
+
+    // If no pivots but still negative → unbounded
     if (potentialPivots.length === 0) {
       steps[steps.length - 1].solutionType = 'unbounded';
       break;
     }
 
-    // Choose first potential pivot (teacher uses first negative column)
+    // Choose first potential pivot
     const [pivotRow, pivotCol] = potentialPivots[0];
 
     // Update basis and non-basic variables
     const leavingVar = basis[pivotRow];
     basis[pivotRow] = pivotCol;
 
-    // Update non-basic variables (oderIndexNoBasis)
-    const enteringIndex = oderIndexNoBasis.indexOf(pivotCol);
+    // Update non-basic variables
+    const enteringIndex = nonBasicVariables.indexOf(pivotCol);
     if (enteringIndex !== -1) {
-      oderIndexNoBasis[enteringIndex] = leavingVar;
+      nonBasicVariables[enteringIndex] = leavingVar;
     }
 
+    // Perform pivot operation on the matrix
     matrix = performPivot(matrix, pivotRow, pivotCol)
 
-    // Update target function (teacher's ComputeTargetFunction)
+ 
+    // Recompute target function
     targetFunction = computeTargetFunction(targetFunction, matrix, basis);
 
     // Update row labels
     rowVars = basis.map(i => `x${i + 1}`);
-
-    stepCount++;
-    if (stepCount > 100) {
-      console.warn("Too many simplex iterations");
-      break;
-    }
   }
 
   return {
@@ -188,7 +208,8 @@ export function doSolveSimplex(
   };
 }
 
-// Teacher's ComputeBasisSolution implementation
+
+// Compute values of basic variables
 function computeBasisSolution(
   matrix: number[][],
   basis: number[],
@@ -201,7 +222,8 @@ function computeBasisSolution(
     solution[`x${i + 1}`] = 0;
   }
 
-  // For each basic variable, find its value
+
+  // Assign values to basic variables from RHS
   for (let row = 0; row < matrix.length; row++) {
     const basisIndex = basis[row];
     if (basisIndex < numVariables) {
@@ -218,7 +240,8 @@ function computeBasisSolution(
   return solution;
 }
 
-// Teacher's ComputeTargetFunction implementation
+
+// Transform target function to canonical form
 function computeTargetFunction(
   targetFunction: number[],
   matrix: number[][],
@@ -228,7 +251,7 @@ function computeTargetFunction(
   const cols = matrix[0].length; // includes RHS
 
   // Create a copy of the target function
-  const newTarget = [...targetFunction];
+  const newTarget = cloneA(targetFunction);
 
   // For each row, find the basic variable (column with 1 in that row)
   for (let i = 0; i < rows; i++) {
@@ -271,14 +294,14 @@ export function solveGauss(
   coefficients: number[][],
   n: number,     // number of rows
   m: number,     // number of columns (including RHS)
-  minors: number[]  // basis indices for each row
+  basis: number[]  // basis indices for each row
 ): number[][] {
   // Create a deep copy
   let coeffs = coefficients.map(row => [...row]);
 
   // Forward elimination
   for (let i = 0; i < n; i++) {
-    const minor = minors[i];
+    const minor = basis[i];
 
     // If pivot element is zero, try to switch rows
     if (Math.abs(coeffs[i][minor]) < 1e-10) {

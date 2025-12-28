@@ -2,15 +2,49 @@ import type { ProblemData, Solution, Step } from "@/types";
 import { buildMatrix, extractColumnsForDisplay, extractZForDisplay, neg, performPivot, pos } from "./utils";
 import { doSolveSimplex } from "./simplexSolver";
 
-// Now update your artificial basis to use this for Phase II
+
 export function solveArtificial(
   problem: ProblemData
 ): Solution {
   const steps: Step[] = [];
-
+  // =====================================================
+  // INITIAL PREPARATION (Canonical form)
+  // =====================================================
+  // 1) Build the constraint matrix from the problem
+  //    Format: [ A | b ]
+  // 2) Ensure all right-hand side values (b) are >= 0
+  //    If b < 0 → multiply the entire row by -1
+  //    This is required for the simplex ratio test
   let matrix = normalizeRHS(buildMatrix(problem));
+
+  // =====================================================
+  // BUILD ARTIFICIAL OBJECTIVE FUNCTION (Phase I)
+  // =====================================================
+  // Phase I objective:
+  //   minimize w = a1 + a2 + ... + am
+  //
+  // Implementation trick:
+  //   w = −(sum of all constraint rows)
+  //
+  // This ensures that:
+  //   - Artificial variables start in the basis
+  //   - We can apply the standard simplex rules
   let z = buildArtificialTargetFunction(matrix);
 
+  // =====================================================
+  // BUILD ARTIFICIAL SYSTEM
+  // =====================================================
+  // For each constraint:
+  //   - Add one artificial variable
+  //   - Artificial variables form the initial basis
+  //
+  // Final matrix structure:
+  //   [ A | I | b ]
+  //
+  // where:
+  //   A → original coefficients
+  //   I → identity matrix (artificial variables)
+  //   b → RHS
   let {
     artificialMatrix,
     nonBasicVariables,
@@ -18,26 +52,42 @@ export function solveArtificial(
     basis
   } = buildArtificialSystem(matrix);
 
+  // Labels of basic variables (for visualization)
   let rowVars = basis.map(i => `x${i + 1}`);
-  const oderIndexNoBasis = [...nonBasicVariables];
-  let stepCount = 0;
 
-  // Phase I: Artificial Basis
+  // =====================================================
+  // PHASE I: ARTIFICIAL SIMPLEX ITERATIONS
+  // =====================================================
   while (true) {
     const potentialPivots: [number, number][] = [];
     let hasNegative = false;
     const lastCol = artificialMatrix[0].length - 1;
 
+    // -------------------------------------------------
+    // STEP 1: Find entering variables
+    // -------------------------------------------------
+    // Rule:
+    //   If any coefficient in z (except RHS) is negative,
+    //   the solution is NOT optimal
     for (let col = 0; col < z.length - 1; col++) {
+      // Negative coefficient → entering variable candidate
       if (neg(z[col])) {
         hasNegative = true;
 
         let minRow = -1;
         let minRatio = Infinity;
 
+        // -------------------------------------------------
+        // STEP 2: Find leaving variable (ratio test)
+        // -------------------------------------------------
+        // Only consider rows where pivot column value > 0
         for (let row = 0; row < basis.length; row++) {
           if (pos(artificialMatrix[row][col])) {
+
+            //ratio = RHS / pivotColumnValue
             const ratio = artificialMatrix[row][lastCol] / artificialMatrix[row][col];
+
+            // Choose the smallest non-negative ratio
             if (ratio < minRatio) {
               minRatio = ratio;
               minRow = row;
@@ -45,46 +95,77 @@ export function solveArtificial(
           }
         }
 
+        // Choose the smallest non-negative ratio
         if (minRow !== -1) {
           potentialPivots.push([minRow, col]);
         }
       }
     }
 
-    // Save step BEFORE pivot
+    // -------------------------------------------------
+    // SAVE STEP (BEFORE PIVOT)
+    // -------------------------------------------------
     steps.push({
-      matrix: extractColumnsForDisplay(artificialMatrix, oderIndexNoBasis),
-      z: extractZForDisplay(z, oderIndexNoBasis),
+      matrix: extractColumnsForDisplay(artificialMatrix, nonBasicVariables),
+      z: extractZForDisplay(z, nonBasicVariables),
       potentialPivots: potentialPivots,
-      colsVariables: oderIndexNoBasis.map(i => `x${i + 1}`),
+      colsVariables: nonBasicVariables.map(i => `x${i + 1}`),
       rowVariables: rowVars,
       solutionType: hasNegative ? 'not-solved' : 'optimal'
     });
 
+    // -------------------------------------------------
+    // PHASE I TERMINATION CHECK
+    // -------------------------------------------------
+    // If no negative coefficients remain in z:
+    //   → Artificial objective is minimized
     if (!hasNegative) {
       const artificialObj = z[z.length - 1];
-      if (artificialObj > 1e-10) {
+
+      // If artificial objective > 0
+      // → original problem is infeasible
+      if (pos(artificialObj)) {
         return {
-          steps,
+          steps: [...steps, {
+            solutionType: 'infeasible',
+            matrix: [],
+            z: [],
+            potentialPivots: [],
+            colsVariables: [],
+            rowVariables: [],
+          }],
           objective: NaN,
           x: {},
           method: 'artificial',
           problem,
         };
       }
+
+      // Artificial objective == 0
+      // → feasible solution found
       break;
     }
 
+    // -------------------------------------------------
+    // UNBOUNDED CHECK
+    // -------------------------------------------------
+    // Negative z exists but no valid pivot row
     if (potentialPivots.length === 0) {
       steps[steps.length - 1].solutionType = 'unbounded';
       break;
     }
 
+    // -------------------------------------------------
+    // STEP 3: Perform pivot
+    // -------------------------------------------------
+    // Choose the first valid pivot
     const [pivotRow, pivotCol] = potentialPivots[0];
 
+    // update basis
     const leavingVar = basis[pivotRow];
     basis[pivotRow] = pivotCol;
 
+    // Update non-basic variable list
     for (let i = 0; i < nonBasicVariables.length; i++) {
       if (nonBasicVariables[i] === pivotCol) {
         nonBasicVariables[i] = leavingVar;
@@ -92,15 +173,13 @@ export function solveArtificial(
       }
     }
 
-    for (let i = 0; i < oderIndexNoBasis.length; i++) {
-      if (oderIndexNoBasis[i] === pivotCol) {
-        oderIndexNoBasis[i] = leavingVar;
-        break;
-      }
-    }
-
+    // Perform Gauss-Jordan pivot
     artificialMatrix = performPivot(artificialMatrix, pivotRow, pivotCol)
 
+    // -------------------------------------------------
+    // STEP 4: Update artificial objective function
+    // -------------------------------------------------
+    // z_new = z_old − z[pivotCol] * pivotRow
     const factor = z[pivotCol];
     for (let j = 0; j < z.length; j++) {
       if (j === z.length - 1) {
@@ -110,25 +189,26 @@ export function solveArtificial(
       }
     }
 
+    // Update row variable labels
     rowVars = basis.map(i => `x${i + 1}`);
-
-    stepCount++;
-    if (stepCount > 100) break;
   }
 
-  // Phase I complete, create main matrix without artificial variables
+  // =====================================================
+  // PHASE I COMPLETE → REMOVE ARTIFICIAL VARIABLES
+  // =====================================================
+  // Remove artificial columns and keep only original system
   const mainMatrix = makeMainMatrix(artificialMatrix, artificialIndices);
 
   // Filter out artificial variables from basis
   const originalBasis = basis.filter(idx => idx < problem.numVariables);
-  // Now run Phase II: Simplex Method
+
+  // =====================================================
+  // PHASE II: STANDARD SIMPLEX
+  // =====================================================  
   const simplexResult = doSolveSimplex(problem, mainMatrix, originalBasis);
 
-  // Combine steps from both phases
-  const allSteps = [...steps, ...simplexResult.steps];
-
   return {
-    steps: allSteps,
+    steps: [...steps, ...simplexResult.steps],
     objective: simplexResult.objective * (problem.objectiveType === 'min' ? -1 : 1),
     x: simplexResult.x,
     method: 'artificial',
