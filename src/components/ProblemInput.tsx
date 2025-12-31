@@ -11,6 +11,8 @@ import {
   Grid3x3,
   Maximize2,
   Minimize2,
+  Download,
+  Upload,
 } from 'lucide-react';
 import type { ProblemData } from '@/types';
 import { validateProblemData } from '@/utils/validation';
@@ -34,23 +36,22 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
     numVariables: string;
     numConstraints: string;
   }>({
-    objective: problem.objectiveCoefficients.map(String),
-    constraints: problem.constraintMatrix.map(row => row.map(String)),
-    rhs: problem.rightHandSide.map(String),
-    numVariables: String(problem.numVariables),
-    numConstraints: String(problem.numConstraints)
+    objective: localProblem.objectiveCoefficients.map(String),
+    constraints: localProblem.constraintMatrix.map(row => row.map(String)),
+    rhs: localProblem.rightHandSide.map(String),
+    numVariables: String(localProblem.numVariables),
+    numConstraints: String(localProblem.numConstraints)
   });
 
   useEffect(() => {
-    setLocalProblem(problem);
     setInputValues({
-      objective: problem.objectiveCoefficients.map(String),
-      constraints: problem.constraintMatrix.map(row => row.map(String)),
-      rhs: problem.rightHandSide.map(String),
-      numVariables: String(problem.numVariables),
-      numConstraints: String(problem.numConstraints)
+      objective: localProblem.objectiveCoefficients.map(String),
+      constraints: localProblem.constraintMatrix.map(row => row.map(String)),
+      rhs: localProblem.rightHandSide.map(String),
+      numVariables: String(localProblem.numVariables),
+      numConstraints: String(localProblem.numConstraints)
     });
-  }, [problem]);
+  }, [localProblem]);
 
   const handleInputChange = (
     type: 'objective' | 'constraint' | 'rhs' | 'numVariables' | 'numConstraints',
@@ -58,6 +59,7 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
     subIndex: number | null,
     value: string
   ) => {
+
     // Only update the display value for now
     if (type === 'objective' && index !== null) {
       setInputValues(prev => ({
@@ -252,6 +254,71 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
       setErrors(validationErrors);
     }
   };
+  const handleLoadFromFile = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "application/json";
+
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text) as ProblemData;
+
+        // Basic shape validation
+        if (
+          typeof parsed.numVariables !== "number" ||
+          typeof parsed.numConstraints !== "number" ||
+          !Array.isArray(parsed.objectiveCoefficients) ||
+          !Array.isArray(parsed.constraintMatrix) ||
+          !Array.isArray(parsed.rightHandSide)
+        ) {
+          throw new Error("Invalid file format");
+        }
+
+        // Clamp dimensions
+        parsed.numVariables = Math.min(Math.max(1, parsed.numVariables), 16);
+        parsed.numConstraints = Math.min(Math.max(1, parsed.numConstraints), 16);
+
+        setLocalProblem(parsed);
+
+        setInputValues({
+          numVariables: String(parsed.numVariables),
+          numConstraints: String(parsed.numConstraints),
+          objective: parsed.objectiveCoefficients.map(String),
+          constraints: parsed.constraintMatrix.map(row => row.map(String)),
+          rhs: parsed.rightHandSide.map(String),
+        });
+
+        setErrors([]);
+        onUpdate(parsed);
+      } catch (err) {
+        setErrors(["Не удалось загрузить файл. Неверный формат JSON."]);
+      }
+    };
+
+    input.click();
+  };
+  const handleSaveToFile = () => {
+    const data: ProblemData = {
+      ...localProblem,
+    };
+
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "linear-problem.json";
+    document.body.appendChild(a);
+    a.click();
+
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -373,11 +440,11 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
               </span>
               <div className="flex-1 overflow-x-auto pb-2">
                 <div className="flex items-center min-w-min gap-1 sm:gap-2">
-                  {localProblem.objectiveCoefficients.map((coeff, index) => (
+                  {localProblem.objectiveCoefficients.map((_, index) => (
                     <div key={index} className="flex items-center">
                       {index > 0 && (
                         <span className="mx-1 sm:mx-2 text-gray-500 text-sm sm:text-base">
-                          {coeff >= 0 ? '+' : ''}
+                          +
                         </span>
                       )}
                       <div className="flex items-center bg-white dark:bg-gray-800 px-2 sm:px-3 py-1 sm:py-2 rounded-lg border min-w-25 sm:min-w-30">
@@ -507,6 +574,26 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
               <Save className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
               <span className="text-sm sm:text-base">Сохранить и решить</span>
             </Button>
+            <Button
+              variant="outline"
+              onClick={handleSaveToFile}
+              className="h-12"
+              size="lg"
+            >
+              <Download className="mr-2 h-5 w-5" />
+              Сохранить в файл
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={handleLoadFromFile}
+              className="h-12"
+              size="lg"
+            >
+              <Upload className="mr-2 h-5 w-5" />
+              Загрузить из файла
+            </Button>
+
           </div>
 
           <div className="mt-3 sm:mt-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400 space-y-1">

@@ -19,6 +19,7 @@ import { useSimplexSolver } from '@/hooks/useSimplexSolver'
 import type { ProblemData } from '@/types'
 import { formatValue } from '@/utils/fractionUtils'
 import { Input } from './ui/input'
+import { ProblemInfo } from './ProblemInfo'
 
 interface Props {
   problem: ProblemData
@@ -188,90 +189,93 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
       </div>
 
       {/* CONTROLS */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5" />
-            Управление решением
-          </CardTitle>
-          <CardDescription>
-            Настройте параметры и метод решения
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Settings Panel */}
-            <div className="space-y-4">
-              <h4 className="font-medium text-sm">Настройки отображения</h4>
-              <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-                <div className="flex items-center gap-3">
-                  <Hash className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <Label htmlFor="fractions" className="font-medium">Дробный формат</Label>
-                    <p className="text-xs text-muted-foreground">Показывать значения как дроби</p>
-                  </div>
-                </div>
-                <Switch
-                  id="fractions"
-                  checked={solver.fractions}
-                  onCheckedChange={solver.toggleFractions}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-                <div className="flex items-center gap-3">
-                  <Square className="h-5 w-5 text-muted-foreground" />
-                  <div>
-                    <Label htmlFor="custom-basis" className="font-medium">Начальный базис</Label>
-                    <p className="text-xs text-muted-foreground">Задать базисные переменные</p>
-                  </div>
-                </div>
-                <Switch
-                  id="custom-basis"
-                  checked={useCustomBasis}
-                  onCheckedChange={setUseCustomBasis}
-                />
-              </div>
-            </div>
-
-            {/* Basis Input Panel */}
-            {useCustomBasis && (
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-5">
+        <Card className='flex-1'>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Settings className="h-5 w-5" />
+              Управление решением
+            </CardTitle>
+            <CardDescription>
+              Настройте параметры и метод решения
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Settings Panel */}
               <div className="space-y-4">
-                <h4 className="font-medium text-sm">Настройка базиса</h4>
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="basis-input" className="text-sm">
-                      Индексы базисных переменных
-                      <span className="text-xs text-muted-foreground ml-2">
-                        (0-{problem.numVariables - 1})
-                      </span>
-                    </Label>
-                    <div className="flex gap-2 mt-2">
-                      <Input
-                        id="basis-input"
-                        value={basisInput}
-                        onChange={e => setBasisInput(e.target.value)}
-                        placeholder={`0,1,2,... (${problem.numConstraints} переменных)`}
-                        className={`flex-1 ${basisError ? 'border-destructive' : ''}`}
-                      />
+                <h4 className="font-medium text-sm">Настройки отображения</h4>
+                <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-3">
+                    <Hash className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <Label htmlFor="fractions" className="font-medium">Дробный формат</Label>
+                      <p className="text-xs text-muted-foreground">Показывать значения как дроби</p>
                     </div>
-                    {basisError && (
-                      <div className="text-sm text-destructive mt-2 flex items-center gap-2">
-                        <AlertCircle className="h-4 w-4" />
-                        {basisError}
-                      </div>
-                    )}
                   </div>
-                  <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
-                    <Info className="h-3 w-3 inline mr-1" />
-                    Введите индексы через запятую. Например: для базиса (x₁, x₂, s₁) введите "0,1,2"
+                  <Switch
+                    id="fractions"
+                    checked={solver.fractions}
+                    onCheckedChange={solver.toggleFractions}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-3">
+                    <Square className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <Label htmlFor="custom-basis" className="font-medium">Начальный базис</Label>
+                      <p className="text-xs text-muted-foreground">Задать базисные переменные</p>
+                    </div>
                   </div>
+                  <Switch
+                    id="custom-basis"
+                    checked={useCustomBasis}
+                    onCheckedChange={setUseCustomBasis}
+                  />
                 </div>
               </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+
+              {/* Basis Input Panel */}
+              {useCustomBasis && (
+                <div className="space-y-4">
+                  <h4 className="font-medium text-sm">Настройка базиса</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="basis-input" className="text-sm">
+                        Индексы базисных переменных
+                        <span className="text-xs text-muted-foreground ml-2">
+                          (0-{problem.numVariables - 1})
+                        </span>
+                      </Label>
+                      <div className="flex gap-2 mt-2">
+                        <Input
+                          id="basis-input"
+                          value={basisInput}
+                          onChange={e => setBasisInput(e.target.value)}
+                          placeholder={`0,1,2,... (${problem.numConstraints} переменных)`}
+                          className={`flex-1 ${basisError ? 'border-destructive' : ''}`}
+                        />
+                      </div>
+                      {basisError && (
+                        <div className="text-sm text-destructive mt-2 flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4" />
+                          {basisError}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
+                      <Info className="h-3 w-3 inline mr-1" />
+                      Введите индексы через запятую. Например: для базиса (x₁, x₂, s₁) введите "0,1,2"
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <ProblemInfo problem={problem} />
+      </div>
 
       {/* MAIN CONTENT TABS */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
