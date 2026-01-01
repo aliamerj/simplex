@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   Card,
   CardContent,
@@ -16,26 +16,19 @@ import {
   Scatter,
   ScatterChart,
   ReferenceLine,
-  Polygon,
   Tooltip
 } from 'recharts';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Target,
   CheckCircle,
   AlertTriangle,
   Info,
-  ZoomIn,
-  ZoomOut,
-  Grid,
   CornerDownRight,
-  AreaChart as AreaChartIcon,
   ArrowRight,
-  VectorSquareIcon,
 } from 'lucide-react';
 import { solveGraphical } from '@/logic/graphicalSolver';
 import { formatValue } from '@/utils/fractionUtils';
@@ -47,17 +40,6 @@ interface GraphicalSolverProps {
 }
 
 export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => {
-  /* =========================
-    UI State
- ========================= */
-  const [zoom, setZoom] = useState(1);
-  const [showObjectiveLines, setShowObjectiveLines] = useState(true);
-  const [showFeasibleArea, setShowFeasibleArea] = useState(true);
-  const [showNormalVector, setShowNormalVector] = useState(true);
-
-  /* =========================
-     Solve the problem (memoized)
-  ========================= */
   const solution = useMemo(() => {
     try {
       return solveGraphical(problem);
@@ -66,15 +48,6 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
     }
   }, [problem]);
 
-  /* =========================
-     Zoom handlers
-  ========================= */
-  const handleZoomIn = () => setZoom(z => Math.min(z + 0.2, 3));
-  const handleZoomOut = () => setZoom(z => Math.max(z - 0.2, 0.5));
-
-  /* =========================
-     Invalid case
-  ========================= */
   if (!solution) {
     return (
       <Alert variant="destructive">
@@ -88,11 +61,6 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
     );
   }
 
-  /* =========================================================
-     Helpers
-  ========================================================= */
-
-  /** Format constraint text like: 2x₁ − x₂ ≤ 5 */
   const formatConstraint = (c: any) => {
     const a = formatValue(c.a, true);
     const b = formatValue(c.b, true);
@@ -109,15 +77,11 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
     return `${eq} ${c.type} ${rhs}`;
   };
 
-  /* =========================================================
-     Chart Data Preparation
-  ========================================================= */
   const {
     chartData,
     constraintLines,
     objectiveLines,
     normalVectorData,
-    feasiblePolygonPoints,
     clippedStripLines,
   } = useMemo(() => {
     /* ----- Bounds ----- */
@@ -160,29 +124,29 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
     /* ----- Feasible polygon points (for the polygon) ----- */
     const getFeasiblePolygonPoints = (): Point[] => {
       if (solution.cornerPoints.length === 0) return [];
-      
+
       // Get the points from cornerPoints
       const points = solution.cornerPoints.map(cp => cp.point);
-      
+
       if (points.length < 2) return points;
-      
+
       // Sort points in a way that creates a proper polygon
       // Find the center
       const centerX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
       const centerY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-      
+
       // Sort by angle
       const sortedPoints = [...points].sort((a, b) => {
         const angleA = Math.atan2(a.y - centerY, a.x - centerX);
         const angleB = Math.atan2(b.y - centerY, b.x - centerX);
         return angleA - angleB;
       });
-      
+
       // Close the polygon
       if (sortedPoints.length > 0) {
         sortedPoints.push(sortedPoints[0]);
       }
-      
+
       return sortedPoints;
     };
 
@@ -191,22 +155,22 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
     /* ----- Function to clip a line to the feasible region ----- */
     const clipLineToFeasibleRegion = (a: number, b: number, c: number): Point[] => {
       if (solution.cornerPoints.length < 2) return [];
-      
+
       // Get the feasible polygon (without closing point for calculations)
       const polygonPoints = feasiblePolygonPoints.slice(0, -1);
       if (polygonPoints.length < 3) return [];
-      
+
       const intersections: Point[] = [];
-      
+
       // Check intersection with each edge of the polygon
       for (let i = 0; i < polygonPoints.length; i++) {
         const p1 = polygonPoints[i];
         const p2 = polygonPoints[(i + 1) % polygonPoints.length];
-        
+
         // Calculate values at endpoints
         const v1 = a * p1.x + b * p1.y;
         const v2 = a * p2.x + b * p2.y;
-        
+
         // Check if line passes between p1 and p2
         if ((v1 <= c && v2 >= c) || (v1 >= c && v2 <= c)) {
           // Find intersection point
@@ -216,100 +180,74 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
           intersections.push({ x, y });
         }
       }
-      
+
       // We should have 0 or 2 intersection points
       if (intersections.length >= 2) {
         return intersections;
       }
-      
+
       return [];
     };
 
     /* ----- Objective lines and strip ----- */
     const objectiveLines: any[] = [];
     const clippedStripLines: any[] = [];
-    
-    if (solution.optimalValue !== null && showObjectiveLines) {
+
+    if (solution.optimalValue !== null) {
       // Create two red boundary lines at 70% and 130% of optimal
-      const lowerValue = solution.optimalValue * 0.7;
-      const upperValue = solution.optimalValue * 1.3;
-      
       // Clip the boundary lines to feasible region
-      const a = solution.objectiveLine.a;
-      const b = solution.objectiveLine.b;
-      
-      const lowerClip = clipLineToFeasibleRegion(a, b, lowerValue);
-      const upperClip = clipLineToFeasibleRegion(a, b, upperValue);
-      
-      // Add boundary lines if they intersect the feasible region
-      if (lowerClip.length >= 2) {
-        objectiveLines.push({
-          value: lowerValue,
-          points: lowerClip,
-          isOptimal: false,
-          isBoundary: true,
-          isLower: true,
-        });
-      }
-      
-      if (upperClip.length >= 2) {
-        objectiveLines.push({
-          value: upperValue,
-          points: upperClip,
-          isOptimal: false,
-          isBoundary: true,
-          isLower: false,
-        });
-      }
-      
-      // Create 15 dashed lines between the boundaries
-      const numStripLines = 15;
-      for (let i = 1; i < numStripLines; i++) {
-        const t = i / numStripLines;
-        const v = lowerValue + (upperValue - lowerValue) * t;
-        
-        const clipped = clipLineToFeasibleRegion(a, b, v);
+      const { a, b } = solution.objectiveLine;
+
+      // determine min/max Z over feasible region
+      const zValues = solution.cornerPoints.map(p => p.objectiveValue);
+      const minZ = Math.min(...zValues);
+      const maxZ = Math.max(...zValues);
+
+      const STRIP_LINES = 20;
+
+      for (let i = 0; i <= STRIP_LINES; i++) {
+        const t = i / STRIP_LINES;
+        const z = minZ + (maxZ - minZ) * t;
+
+        const clipped = clipLineToFeasibleRegion(a, b, z);
         if (clipped.length >= 2) {
           clippedStripLines.push({
-            value: v,
+            value: z,
             points: clipped,
           });
         }
       }
 
-      // Add optimal line (clipped to feasible region)
+      // optimal line (special)
       const optimalClip = clipLineToFeasibleRegion(a, b, solution.optimalValue);
       if (optimalClip.length >= 2) {
         objectiveLines.push({
           value: solution.optimalValue,
           points: optimalClip,
           isOptimal: true,
-          isBoundary: false,
         });
       }
     }
 
     /* ----- Normal vector ----- */
-    const normalVectorData =
-      showNormalVector && solution.optimalPoint
-        ? {
-          start: solution.optimalPoint,
-          end: {
-            x: solution.optimalPoint.x + solution.normalVector.x * 0.5,
-            y: solution.optimalPoint.y + solution.normalVector.y * 0.5,
-          },
-        }
-        : null;
+    const normalVectorData = solution.optimalPoint
+      ? {
+        start: solution.optimalPoint,
+        end: {
+          x: solution.optimalPoint.x + solution.normalVector.x * 0.5,
+          y: solution.optimalPoint.y + solution.normalVector.y * 0.5,
+        },
+      }
+      : null;
 
     return {
       chartData: { maxX, maxY },
       constraintLines,
       objectiveLines,
       normalVectorData,
-      feasiblePolygonPoints,
       clippedStripLines,
     };
-  }, [solution, showObjectiveLines, showNormalVector]);
+  }, [solution]);
 
   return (
     <div className="space-y-6">
@@ -389,67 +327,6 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
         <ProblemInfo problem={problem} isGrap={true} />
       </div>
 
-      {/* Graph Controls */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle>Управление графиком</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleZoomOut}
-                disabled={zoom <= 0.5}
-              >
-                <ZoomOut className="h-4 w-4" />
-              </Button>
-              <span className="text-sm font-medium">Масштаб: {zoom.toFixed(1)}x</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleZoomIn}
-                disabled={zoom >= 3}
-              >
-                <ZoomIn className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <Separator orientation="vertical" className="h-6" />
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant={showObjectiveLines ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowObjectiveLines(!showObjectiveLines)}
-              >
-                <Grid className="h-4 w-4 mr-2" />
-                Линии уровня
-              </Button>
-
-              <Button
-                variant={showFeasibleArea ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowFeasibleArea(!showFeasibleArea)}
-              >
-                <AreaChartIcon className="h-4 w-4 mr-2" />
-                Область
-              </Button>
-
-              <Button
-                variant={showNormalVector ? "default" : "outline"}
-                size="sm"
-                onClick={() => setShowNormalVector(!showNormalVector)}
-              >
-                <VectorSquareIcon className="h-4 w-4 mr-2" />
-                Вектор нормали
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Main Graph */}
       <Card>
         <CardHeader>
@@ -494,17 +371,14 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
 
                 <Legend />
 
-                {/* Feasible Area Polygon */}
-                {showFeasibleArea && feasiblePolygonPoints.length > 0 && (
-                  <Polygon
-                    points={feasiblePolygonPoints}
-                    fill="#22c55e"
-                    fillOpacity={0.2}
-                    stroke="#22c55e"
-                    strokeWidth={1}
-                    name="Допустимая область"
-                  />
-                )}
+                <Line
+                  data={[]}
+                  dataKey="y"
+                  stroke="#ef4444"
+                  strokeDasharray="2 2"
+                  name="Линии уровня целевой функции"
+                  legendType="line"
+                />
 
                 {/* Constraint Lines */}
                 {constraintLines.map((line) => (
@@ -517,13 +391,13 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
                     strokeWidth={2}
                     strokeDasharray={line.id >= solution.constraints.length - 2 ? "3 3" : undefined}
                     dot={false}
-                    name={line.name}
+                    name={`Ограничение ${line.id + 1}`}
                     connectNulls
                   />
                 ))}
 
                 {/* Strip Lines - Clipped to feasible region */}
-                {showObjectiveLines && clippedStripLines.map((line, index) => (
+                {clippedStripLines.map((line, index) => (
                   <Line
                     key={`strip-${index}`}
                     type="linear"
@@ -533,13 +407,13 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
                     strokeWidth={1}
                     strokeDasharray="2 2"
                     dot={false}
-                    name={`Z = ${formatValue(line.value, true)}`}
+                    legendType="none"
                     connectNulls
                   />
                 ))}
 
                 {/* Boundary Lines and Optimal Line */}
-                {showObjectiveLines && objectiveLines.map((line, index) => (
+                {objectiveLines.map((line, index) => (
                   <Line
                     key={`obj-${index}`}
                     type="linear"
@@ -549,17 +423,13 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
                     strokeWidth={line.isOptimal ? 3 : line.isBoundary ? 2 : 1}
                     strokeDasharray={line.isOptimal ? undefined : (line.isBoundary ? undefined : "2 2")}
                     dot={false}
-                    name={line.isOptimal 
-                      ? `Оптимальная линия (Z = ${formatValue(line.value, true)})` 
-                      : line.isBoundary 
-                        ? (line.isLower ? `Нижняя граница (Z = ${formatValue(line.value, true)})` : `Верхняя граница (Z = ${formatValue(line.value, true)})`)
-                        : `Z = ${formatValue(line.value, true)}`}
+                    name="Оптимальная линия"
                     connectNulls
                   />
                 ))}
 
                 {/* Normal Vector */}
-                {showNormalVector && normalVectorData && (
+                {normalVectorData && (
                   <ReferenceLine
                     segment={[
                       { x: normalVectorData.start.x, y: normalVectorData.start.y },
