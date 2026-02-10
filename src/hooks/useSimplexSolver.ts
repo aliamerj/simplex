@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { ProblemData, Solution } from '@/types';
 import { getExampleProblem6 } from '@/logic/utils';
-import { solveSimplex } from '@/logic/simplexSolver';
+import { solveSimplex, solveSimplexStep } from '@/logic/simplexSolver';
 import { computeObjectiveFromX, extractSolutionFromSteps, solveArtificial, solveArtificialStep } from '@/logic/artificial';
 
 export const useSimplexSolver = (initialProblem?: ProblemData) => {
@@ -33,22 +33,25 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
     }));
   }, [solution.problem]);
 
-  const startStepByStep = useCallback(() => {
+  const startStepByStep = useCallback((basis: number[] = []) => {
     setSolution(prev => {
       if (prev.steps.length > 0) {
         return prev;
       }
 
-      const steps = solveArtificialStep(prev.problem, []);
+      const steps = basis.length === 0
+        ? solveArtificialStep(prev.problem, [])
+        : solveSimplexStep(prev.problem, basis, []);
 
       return {
         ...prev,
         steps,
+        method: basis.length === 0 ? 'artificial' : 'simplex',
       };
     });
   }, []);
 
-  const solveStepByStep = useCallback((stepIndex: number, pivotIndex: number) => {
+  const solveStepByStep = useCallback((stepIndex: number, pivotIndex: number, basis: number[] = []) => {
     setSolution(prev => {
       if (stepIndex < 0 || stepIndex >= prev.steps.length) {
         return prev;
@@ -65,14 +68,20 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
           rowVariables: [...step.rowVariables],
         }));
 
-      const steps = solveArtificialStep(prev.problem, truncatedSteps, pivotIndex);
+      const steps = basis.length === 0
+        ? solveArtificialStep(prev.problem, truncatedSteps, pivotIndex)
+        : solveSimplexStep(prev.problem, basis, truncatedSteps, pivotIndex);
+
       const x = extractSolutionFromSteps(prev.problem, steps);
+
       const objective = computeObjectiveFromX(x, prev.problem.objectiveCoefficients);
+
       return {
         ...prev,
         steps,
         x,
-        objective
+        objective,
+        method: basis.length === 0 ? 'artificial' : 'simplex',
       };
     });
   }, []);

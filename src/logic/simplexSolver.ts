@@ -1,287 +1,239 @@
-import type { ProblemData, Solution, Step } from "@/types";
-import { buildMatrix, cloneM, extractColumnsForDisplay, extractZForDisplay, neg, performPivot, pos } from "./utils";
+import type { ProblemData, Solution, SolutionType, Step } from "@/types";
+import { buildMatrix, cloneM, neg, performPivot, pos } from "./utils";
 
-export function solveSimplex(problem: ProblemData, baseVector: number[]): Solution {
+type SimplexState = {
+  matrix: number[][];
+  basis: number[];
+  z: number[];
+};
 
-  // Build initial simplex tableau from the problem
-  let matrix = buildMatrix(problem);
+const EPS = 1e-10;
 
-  // Basis array will store indices of basic variables
-  const basis: number[] = [];
-
-  // Extract basis indices from baseVector
-  // baseVector[i] === 1 means variable xi is basic
-  for (let i = 0; i < baseVector.length; i++) {
-    if (baseVector[i] === 1) {
-      basis.push(i);
-    }
-  }
-
-  // If number of basic variables ≠ number of constraints,
-  // we do not have a valid initial basis → infeasible
-  if (basis.length !== problem.numConstraints) {
-    return {
-      steps: [{
-        solutionType: 'infeasible',
-        matrix: [],
-        z: [],
-        potentialPivots: [],
-        colsVariables: [],
-        rowVariables: [],
-      }],
-      objective: NaN,
-      x: {},
-      method: 'simplex',
-      problem,
-    };
-  }
-
-  if (!isValidBasis(matrix, basis)) {
-    return {
-      steps: [{
-        solutionType: 'infeasible',
-        matrix: [],
-        z: [],
-        potentialPivots: [],
-        colsVariables: [],
-        rowVariables: [],
-      }],
-      objective: NaN,
-      x: {},
-      method: 'simplex',
-      problem,
-    };
-  }
-
-  // Apply Gauss-Jordan elimination to obtain canonical form
-  // Ensures:
-  //  - basic columns form identity matrix
-  //  - RHS values are correct
-  const matrixAfterGauss = solveGauss(
-    matrix,
-    problem.numConstraints,
-    matrix[0].length,  // includes RHS
-    basis
-  );
-
-  // Run the main simplex iteration
-  const result = doSolveSimplex(problem, matrixAfterGauss, basis)
-
-  // Adjust objective sign if the problem is minimization
-  return {
-    ...result,
-    objective: result.objective * (problem.objectiveType === 'min' ? -1 : 1)
-  }
-}
-
-
-
-export function doSolveSimplex(
-  problem: ProblemData,
-  initialMatrix: number[][],
-  initialBasis: number[]
-): Solution {
-  const steps: Step[] = [];
-
-  // Clone matrix and basis to avoid mutating input
-  let matrix = cloneM(initialMatrix);
-  let basis = [...initialBasis];
-
-  // Number of columns including RHS
-  const totalCols = matrix[0].length;
-
-  // Initialize target function Z
-  let targetFunction = new Array(totalCols).fill(0);
-
-
-  // Set coefficients of original objective function
-  for (let i = 0; i < problem.numVariables; i++) {
-    targetFunction[i] = problem.objectiveCoefficients[i];
-  }
-
-  // RHS of target function starts at 0
-  targetFunction[totalCols - 1] = 0;
-
-  // Transform target function into canonical form
-  targetFunction = computeTargetFunction(problem, matrix, basis);
-
-
-  // Determine non-basic variables (used for display)
-  let nonBasicVariables = getNonBasic(totalCols, basis);
-  for (let i = 0; i < totalCols - 1; i++) {
-    if (!basis.includes(i)) {
-      nonBasicVariables.push(i);
-    }
-  }
-
-  // Labels for basic variables (rows)
-  let rowVars = basis.map(i => `x${i + 1}`);
+export function solveSimplex(problem: ProblemData, indexBasis: number[]): Solution {
+  let steps: Step[] = [];
 
   while (true) {
-    // Store all possible pivot positions
-    const potentialPivots: [number, number][] = [];
-    let hasNegative = false;
-    const lastCol = matrix[0].length - 1;
+    const nextSteps = solveSimplexStep(problem, indexBasis, steps, 0);
 
-    // Check target function for negative coefficients
-    // Negative coefficient → solution not optimal
-    for (let col = 0; col < targetFunction.length - 1; col++) {
-      if (neg(targetFunction[col])) {
-        hasNegative = true;
-
-        // Find minimum ratio row for this column
-        let minRow = -1;
-        let minRatio = Infinity;
-
-        // Minimum ratio test to select leaving variable
-        for (let row = 0; row < basis.length; row++) {
-          if (pos(matrix[row][col])) {
-            const ratio = matrix[row][lastCol] / matrix[row][col];
-            if (ratio < minRatio) {
-              minRatio = ratio;
-              minRow = row;
-            }
-          }
-        }
-
-        // Valid pivot found
-        if (minRow !== -1) {
-          potentialPivots.push([minRow, col]);
-        } else {
-          // No valid pivot → unbounded problem
-          steps.push({
-            matrix: extractColumnsForDisplay(matrix, nonBasicVariables),
-            z: extractZForDisplay(targetFunction, nonBasicVariables),
-            potentialPivots: [],
-            colsVariables: nonBasicVariables.map(i => `x${i + 1}`),
-            rowVariables: rowVars,
-            solutionType: 'unbounded'
-          });
-
-          return {
-            steps,
-            objective: targetFunction[targetFunction.length - 1],
-            x: computeBasisSolution(matrix, basis, problem.numVariables),
-            method: 'simplex',
-            problem
-          };
-        }
-      }
-    }
-
-
-    // Save tableau BEFORE pivot
-    steps.push({
-      matrix: extractColumnsForDisplay(matrix, nonBasicVariables),
-      z: extractZForDisplay(targetFunction, nonBasicVariables),
-      potentialPivots: [...potentialPivots],
-      colsVariables: nonBasicVariables.map(i => `x${i + 1}`),
-      rowVariables: rowVars,
-      solutionType: hasNegative ? 'not-solved' : 'optimal'
-    });
-
-
-    // No negative coefficients → optimal solution reached
-    if (!hasNegative) {
+    if (nextSteps.length === steps.length) {
+      steps = nextSteps;
       break;
     }
 
-
-    // If no pivots but still negative → unbounded
-    if (potentialPivots.length === 0) {
-      steps[steps.length - 1].solutionType = 'unbounded';
+    steps = nextSteps;
+    const lastStep = steps.at(-1);
+    if (!lastStep || lastStep.solutionType !== 'not-solved') {
       break;
     }
-
-    // Choose first potential pivot
-    const [pivotRow, pivotCol] = potentialPivots[0];
-
-    // Update basis and non-basic variables
-    basis[pivotRow] = pivotCol;
-
-    // Update non-basic variables
-    const enteringIndex = nonBasicVariables.indexOf(pivotCol);
-    if (enteringIndex !== -1) {
-      nonBasicVariables = getNonBasic(totalCols, basis);
-    }
-
-    // Perform pivot operation on the matrix
-    matrix = performPivot(matrix, pivotRow, pivotCol)
-
-    //  
-    // Recompute target function
-    targetFunction = computeTargetFunction(problem, matrix, basis);
-
-    // Update row labels
-    rowVars = basis.map(i => `x${i + 1}`);
   }
+
+  const x = extractSimplexSolution(problem, steps);
+  const objective = computeObjectiveFromX(x, problem.objectiveCoefficients);
 
   return {
     steps,
-    objective: targetFunction[targetFunction.length - 1],
-    x: computeBasisSolution(matrix, basis, problem.numVariables),
+    x,
+    objective,
     method: 'simplex',
-    problem
+    problem,
   };
 }
 
+export function solveSimplexStep(
+  problem: ProblemData,
+  indexBasis: number[],
+  previousSteps: Step[],
+  selectedPivotIndex?: number,
+): Step[] {
+  const steps = cloneSteps(previousSteps);
 
-// Compute values of basic variables
-function computeBasisSolution(
-  matrix: number[][],
-  basis: number[],
-  numVariables: number
-): Record<string, number> {
+  if (steps.length === 0) {
+    const initial = createInitialState(problem, indexBasis);
+    if (!initial) {
+      return [
+        {
+          matrix: [],
+          z: [],
+          potentialPivots: [],
+          colsVariables: [],
+          rowVariables: [],
+          solutionType: 'infeasible',
+        },
+      ];
+    }
 
-  const solution: Record<string, number> = {};
-
-  // Initialize all variables
-  for (let i = 0; i < numVariables; i++) {
-    solution[`x${i + 1}`] = 0;
+    return [...steps, createSnapshot(problem, initial)];
   }
 
-  const rhs = matrix[0].length - 1;
+  const lastStepIndex = steps.length - 1;
+  const lastStep = steps[lastStepIndex];
 
-  for (let row = 0; row < basis.length; row++) {
+  if (!lastStep.potentialPivots.length || lastStep.solutionType !== 'not-solved') {
+    return steps;
+  }
 
-    const col = basis[row];
+  const chosenPivotIndex = selectedPivotIndex ?? 0;
+  const pivotPoint = lastStep.potentialPivots[chosenPivotIndex];
 
-    if (col < numVariables) {
-      solution[`x${col + 1}`] = matrix[row][rhs];
+  if (!pivotPoint) {
+    return steps;
+  }
+
+  steps[lastStepIndex] = {
+    ...lastStep,
+    selectedPivotIndex: chosenPivotIndex,
+  };
+
+  const state = restoreStateFromStep(problem, lastStep);
+  const [pivotRow, pivotCol] = pivotPoint;
+
+  state.matrix = performPivot(state.matrix, pivotRow, pivotCol);
+  state.basis[pivotRow] = pivotCol;
+  state.z = computeTargetFunction(problem, state.matrix, state.basis);
+
+  return [...steps, createSnapshot(problem, state)];
+}
+
+function createInitialState(problem: ProblemData, indexBasis: number[]): SimplexState | null {
+  if (!isBasisLengthValid(problem, indexBasis) || !isBasisIndicesValid(problem, indexBasis)) {
+    return null;
+  }
+
+  const matrix = normalizeRhs(buildMatrix(problem));
+  const basis = [...indexBasis];
+
+  if (!isValidBasisForGauss(matrix, basis)) {
+    return null;
+  }
+
+  const canonical = solveGauss(matrix, problem.numConstraints, matrix[0].length, basis);
+
+  if (!isBasicFeasible(canonical)) {
+    return null;
+  }
+
+  return {
+    matrix: canonical,
+    basis,
+    z: computeTargetFunction(problem, canonical, basis),
+  };
+}
+
+function restoreStateFromStep(problem: ProblemData, step: Step): SimplexState {
+  const basis = step.rowVariables.map(name => parseInt(name.slice(1), 10) - 1);
+  const matrix = cloneM(step.matrix);
+
+  return {
+    matrix,
+    basis,
+    z: computeTargetFunction(problem, matrix, basis),
+  };
+}
+
+function createSnapshot(problem: ProblemData, state: SimplexState): Step {
+  const { potentialPivots, hasNegative } = findPotentialPivots(state.matrix, state.z);
+
+  return {
+    matrix: cloneM(state.matrix),
+    z: [...state.z],
+    potentialPivots,
+    colsVariables: createVariableNames(problem.numVariables),
+    rowVariables: state.basis.map(col => `x${col + 1}`),
+    solutionType: resolveSolutionType(hasNegative, potentialPivots),
+  };
+}
+
+function resolveSolutionType(hasNegative: boolean, potentialPivots: [number, number][]): SolutionType {
+  if (!hasNegative) {
+    return 'optimal';
+  }
+
+  if (potentialPivots.length === 0) {
+    return 'unbounded';
+  }
+
+  return 'not-solved';
+}
+
+function findPotentialPivots(matrix: number[][], z: number[]) {
+  const potentialPivots: [number, number][] = [];
+  const rhsIndex = matrix[0].length - 1;
+  let hasNegative = false;
+
+  for (let col = 0; col < z.length - 1; col++) {
+    if (!neg(z[col])) continue;
+
+    hasNegative = true;
+
+    let leavingRow = -1;
+    let minRatio = Infinity;
+
+    for (let row = 0; row < matrix.length; row++) {
+      if (!pos(matrix[row][col])) continue;
+
+      const ratio = matrix[row][rhsIndex] / matrix[row][col];
+      if (ratio < minRatio - EPS) {
+        minRatio = ratio;
+        leavingRow = row;
+      }
+    }
+
+    if (leavingRow !== -1) {
+      potentialPivots.push([leavingRow, col]);
     }
   }
 
-  return solution;
+  return { potentialPivots, hasNegative };
 }
 
+function isBasisLengthValid(problem: ProblemData, basis: number[]) {
+  return basis.length === problem.numConstraints;
+}
 
-// Transform target function to canonical form
-function computeTargetFunction(
-  problem: ProblemData,
-  matrix: number[][],
-  basis: number[]
-): number[] {
+function isBasisIndicesValid(problem: ProblemData, basis: number[]) {
+  const unique = new Set(basis);
+  if (unique.size !== basis.length) return false;
 
+  return basis.every(col => Number.isInteger(col) && col >= 0 && col < problem.numVariables);
+}
+
+function isValidBasisForGauss(matrix: number[][], basis: number[]) {
+  return basis.every((col, row) => Math.abs(matrix[row][col]) > EPS);
+}
+
+function isBasicFeasible(matrix: number[][]) {
+  const rhsIndex = matrix[0].length - 1;
+  return matrix.every(row => row[rhsIndex] >= -EPS);
+}
+
+function normalizeRhs(matrix: number[][]) {
+  const normalized = cloneM(matrix);
+  const rhsIndex = normalized[0].length - 1;
+
+  for (let row = 0; row < normalized.length; row++) {
+    if (normalized[row][rhsIndex] >= 0) continue;
+
+    for (let col = 0; col < normalized[row].length; col++) {
+      normalized[row][col] *= -1;
+    }
+  }
+
+  return normalized;
+}
+
+function computeTargetFunction(problem: ProblemData, matrix: number[][], basis: number[]) {
   const cols = matrix[0].length;
   const z = new Array(cols).fill(0);
 
-  // Fill original objective coefficients
-  for (let i = 0; i < problem.numVariables; i++) {
-    z[i] = problem.objectiveCoefficients[i];
+  for (let col = 0; col < problem.numVariables; col++) {
+    z[col] = problem.objectiveCoefficients[col] ?? 0;
   }
 
-  // RHS
-  z[cols - 1] = 0;
-
-  // Canonical transformation
   for (let row = 0; row < basis.length; row++) {
+    const basicCol = basis[row];
+    const cB = problem.objectiveCoefficients[basicCol] ?? 0;
 
-    const basicIndex = basis[row];
-
-    // coefficient of basic variable in objective
-    const cB = problem.objectiveCoefficients[basicIndex] ?? 0;
-
-    if (Math.abs(cB) < 1e-10) continue;
+    if (Math.abs(cB) < EPS) continue;
 
     for (let col = 0; col < cols; col++) {
       z[col] -= cB * matrix[row][col];
@@ -291,74 +243,137 @@ function computeTargetFunction(
   return z;
 }
 
+function extractSimplexSolution(problem: ProblemData, steps: Step[]) {
+  const solution: Record<string, number> = {};
+
+  for (let i = 0; i < problem.numVariables; i++) {
+    solution[`x${i + 1}`] = 0;
+  }
+
+  const lastStep = steps.at(-1);
+  if (!lastStep || lastStep.matrix.length === 0) {
+    return solution;
+  }
+
+  const rhsIndex = lastStep.matrix[0].length - 1;
+
+  lastStep.rowVariables.forEach((variableName, row) => {
+    const variableIndex = parseInt(variableName.slice(1), 10) - 1;
+    if (variableIndex >= 0 && variableIndex < problem.numVariables) {
+      solution[variableName] = lastStep.matrix[row][rhsIndex];
+    }
+  });
+
+  return solution;
+}
+
+function computeObjectiveFromX(x: Record<string, number>, objectiveCoefficients: number[]) {
+  let value = 0;
+
+  for (let i = 0; i < objectiveCoefficients.length; i++) {
+    value += (objectiveCoefficients[i] ?? 0) * (x[`x${i + 1}`] ?? 0);
+  }
+
+  return value;
+}
+
+function createVariableNames(numVariables: number) {
+  return Array.from({ length: numVariables }, (_, i) => `x${i + 1}`);
+}
+
+export function doSolveSimplex(
+  problem: ProblemData,
+  initialMatrix: number[][],
+  initialBasis: number[]
+): Solution {
+  const state: SimplexState = {
+    matrix: cloneM(initialMatrix),
+    basis: [...initialBasis],
+    z: computeTargetFunction(problem, initialMatrix, initialBasis),
+  };
+
+  const steps: Step[] = [];
+
+  while (true) {
+    const snapshot = createSnapshot(problem, state);
+    steps.push(snapshot);
+
+    if (snapshot.solutionType !== 'not-solved') {
+      break;
+    }
+
+    const pivot = snapshot.potentialPivots[0];
+    if (!pivot) {
+      break;
+    }
+
+    const [pivotRow, pivotCol] = pivot;
+    state.matrix = performPivot(state.matrix, pivotRow, pivotCol);
+    state.basis[pivotRow] = pivotCol;
+    state.z = computeTargetFunction(problem, state.matrix, state.basis);
+  }
+
+  const x = extractSimplexSolution(problem, steps);
+  const objective = computeObjectiveFromX(x, problem.objectiveCoefficients);
+
+  return {
+    steps,
+    x,
+    objective,
+    method: 'simplex',
+    problem,
+  };
+}
+
+function cloneSteps(steps: Step[]): Step[] {
+  return steps.map(step => ({
+    ...step,
+    matrix: cloneM(step.matrix),
+    z: [...step.z],
+    potentialPivots: [...step.potentialPivots],
+    colsVariables: [...step.colsVariables],
+    rowVariables: [...step.rowVariables],
+  }));
+}
 
 export function solveGauss(
   coefficients: number[][],
-  n: number,     // number of rows
-  m: number,     // number of columns (including RHS)
-  basis: number[]  // basis indices for each row
+  n: number,
+  m: number,
+  basis: number[]
 ): number[][] {
-  // Create a deep copy
-  let coeffs = coefficients.map(row => [...row]);
+  const coeffs = coefficients.map(row => [...row]);
 
-  // Forward elimination
   for (let i = 0; i < n; i++) {
-    const minor = basis[i];
+    const pivotCol = basis[i];
 
-    // If pivot element is zero, try to switch rows
-    if (Math.abs(coeffs[i][minor]) < 1e-10) {
+    if (Math.abs(coeffs[i][pivotCol]) < EPS) {
       for (let k = i + 1; k < n; k++) {
-        if (Math.abs(coeffs[k][minor]) > 1e-10) {
-          // Switch rows i and k
+        if (Math.abs(coeffs[k][pivotCol]) > EPS) {
           [coeffs[i], coeffs[k]] = [coeffs[k], coeffs[i]];
           break;
         }
       }
     }
 
-    // Normalize the pivot row by the pivot element
-    const pivot = coeffs[i][minor];
-    if (Math.abs(pivot) > 1e-10) {
-      for (let j = 0; j < m; j++) {
-        coeffs[i][j] /= pivot;
-      }
+    const pivot = coeffs[i][pivotCol];
+    if (Math.abs(pivot) < EPS) {
+      continue;
     }
 
-    // Eliminate this column from other rows
+    for (let j = 0; j < m; j++) {
+      coeffs[i][j] /= pivot;
+    }
+
     for (let k = 0; k < n; k++) {
-      if (k !== i) {
-        const factor = coeffs[k][minor];
-        for (let j = 0; j < m; j++) {
-          coeffs[k][j] -= factor * coeffs[i][j];
-        }
+      if (k === i) continue;
+
+      const factor = coeffs[k][pivotCol];
+      for (let j = 0; j < m; j++) {
+        coeffs[k][j] -= factor * coeffs[i][j];
       }
     }
   }
 
   return coeffs;
-}
-
-function getNonBasic(totalCols: number, basis: number[]): number[] {
-  const result: number[] = [];
-
-  for (let i = 0; i < totalCols - 1; i++) {
-    if (!basis.includes(i)) {
-      result.push(i);
-    }
-  }
-
-  return result;
-}
-
-function isValidBasis(matrix: number[][], basis: number[]): boolean {
-
-  for (let row = 0; row < basis.length; row++) {
-    const col = basis[row];
-
-    if (Math.abs(matrix[row][col]) < 1e-10) {
-      return false;
-    }
-  }
-
-  return true;
 }

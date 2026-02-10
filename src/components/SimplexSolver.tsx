@@ -58,6 +58,17 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
       basis.push(v)
     }
 
+    if (basis.length !== problem.numConstraints) {
+      return {
+        basis: null,
+        error: `Нужно ${problem.numConstraints} индексов: indexBasis[row] = индекс столбца базисной переменной`,
+      }
+    }
+
+    if (new Set(basis).size !== basis.length) {
+      return { basis: null, error: 'Индексы базиса не должны повторяться' }
+    }
+
     return { basis, error: null }
   }, [basisInput, problem])
 
@@ -70,7 +81,13 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
     reset()
 
     if (stepByStepMode) {
-      startStepByStep()
+      if (useCustomBasis) {
+        const { basis } = basisParseResult
+        if (basis) startStepByStep(basis)
+        return
+      }
+
+      startStepByStep([])
       return
     }
 
@@ -93,8 +110,10 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
 
   const handlePivotSelect = useCallback((stepIndex: number, pivotIndex: number) => {
     if (!stepByStepMode) return
-    solveStepByStep(stepIndex, pivotIndex)
-  }, [solveStepByStep, stepByStepMode])
+
+    const basis = useCustomBasis ? (basisParseResult.basis ?? []) : []
+    solveStepByStep(stepIndex, pivotIndex, basis)
+  }, [basisParseResult.basis, solveStepByStep, stepByStepMode, useCustomBasis])
 
   /* ---------------- DERIVED ---------------- */
 
@@ -254,7 +273,6 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                     id="custom-basis"
                     checked={useCustomBasis}
                     onCheckedChange={setUseCustomBasis}
-                    disabled={stepByStepMode}
                   />
                 </div>
 
@@ -275,7 +293,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
               </div>
 
               {/* Basis Input Panel */}
-              {useCustomBasis && !stepByStepMode && (
+              {useCustomBasis && (
                 <div className="space-y-4">
                   <h4 className="font-medium text-sm">Настройка базиса</h4>
                   <div className="space-y-3">
@@ -291,7 +309,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                           id="basis-input"
                           value={basisInput}
                           onChange={e => setBasisInput(e.target.value)}
-                          placeholder={`0,1,2,... (${problem.numConstraints} переменных)`}
+                          placeholder={`Например: 2,3,4 (${problem.numConstraints} индекса)`}
                           className={`flex-1 ${basisError ? 'border-destructive' : ''}`}
                         />
                       </div>
@@ -304,7 +322,8 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
                       <Info className="h-3 w-3 inline mr-1" />
-                      Введите индексы через запятую. Например: для базиса (x₁, x₂, s₁) введите "0,1,2"
+                      Введите indexBasis через запятую: indexBasis[row] = индекс столбца базисной переменной в строке row.
+                      Длина массива должна быть равна числу ограничений ({problem.numConstraints}).
                     </div>
                   </div>
                 </div>
