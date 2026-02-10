@@ -1,4 +1,4 @@
-import { solveArtificial } from "@/logic/artificialSolver";
+import { solveArtificial } from "@/logic/artificial";
 import { getExampleProblem3 } from "@/logic/utils";
 
 export const runSimplexTest = () => {

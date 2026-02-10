@@ -1,5 +1,6 @@
-import type { ProblemData, Solution, Step, SolutionType } from "@/types";
-import { buildMatrix } from "./utils";
+import type { ProblemData, Solution, Step } from "@/types";
+import { buildMatrix, cloneM, neg, performPivot } from "./utils";
+import { cloneSteps, computeObjectiveFromX, findPotentialPivots, normalizeRhs, resolveSolutionType } from "./solverCommon";
 
 
 type SolverState = {
@@ -78,7 +79,7 @@ export function solveArtificialStep(
 }
 
 function createInitialState(problem: ProblemData): SolverState {
-  const matrix = normalizeRHS(buildMatrix(problem));
+  const matrix = normalizeRhs(buildMatrix(problem));
   const z = buildArtificialTargetFunction(matrix);
 
   const colsVariables = Array.from({ length: problem.numVariables })
@@ -116,7 +117,9 @@ function restoreState(problem: ProblemData, step: Step): SolverState {
 
 function appendNextSnapshot(problem: ProblemData, steps: Step[], state: SolverState): Step[] {
   while (true) {
-    const { potentialPivots, hasNegative } = findPotentialPivots(state.matrix, state.z);
+    const { potentialPivots, hasNegative } = findPotentialPivots(state.matrix, state.z, {
+      canLeaveBasis: value => !neg(value) && value !== 0,
+    });
     const solutionType = resolveSolutionType(hasNegative, potentialPivots);
 
     steps.push({
@@ -140,49 +143,6 @@ function appendNextSnapshot(problem: ProblemData, steps: Step[], state: SolverSt
   }
 }
 
-function resolveSolutionType(hasNegative: boolean, potentialPivots: [number, number][]): SolutionType {
-  if (!hasNegative) {
-    return 'optimal';
-  }
-
-  if (potentialPivots.length === 0) {
-    return 'unbounded';
-  }
-
-  return 'not-solved';
-}
-
-function findPotentialPivots(matrix: number[][], z: number[]) {
-  const potentialPivots: [number, number][] = [];
-  let hasNegative = false;
-  const lastCol = matrix[0].length - 1;
-
-  for (let col = 0; col < z.length - 1; col++) {
-    if (!neg(z[col])) continue;
-
-    hasNegative = true;
-
-    let minRow = -1;
-    let minRatio = Infinity;
-
-    for (let row = 0; row < matrix.length; row++) {
-      if (neg(matrix[row][col]) || matrix[row][col] === 0) continue;
-
-      const ratio = matrix[row][lastCol] / matrix[row][col];
-      if (ratio < minRatio) {
-        minRatio = ratio;
-        minRow = row;
-      }
-    }
-
-    if (minRow !== -1) {
-      potentialPivots.push([minRow, col]);
-    }
-  }
-
-  return { potentialPivots, hasNegative };
-}
-
 function applyPivotToState(state: SolverState, pivotPoint: [number, number]) {
   const [pivotRow, pivotCol] = pivotPoint;
 
@@ -190,7 +150,7 @@ function applyPivotToState(state: SolverState, pivotPoint: [number, number]) {
   state.colsVariables = state.colsVariables.filter((_, i) => i !== pivotCol);
 
   const tableau = cloneM([...state.matrix, state.z]);
-  const afterPivot = pivot(tableau, pivotRow, pivotCol);
+  const afterPivot = performPivot(tableau, pivotRow, pivotCol);
 
   const finalized = afterPivot.map(row => row.filter((_, i) => i !== pivotCol));
   state.matrix = finalized.slice(0, finalized.length - 1);
@@ -207,46 +167,12 @@ export function extractSolutionFromSteps(problem: ProblemData, steps: Step[]) {
   return extractSolution(lastStep.matrix, lastStep.rowVariables, problem.numVariables);
 }
 
-export function computeObjectiveFromX(x: Record<string, number>, C: number[]) {
-  let value = 0;
-  for (let i = 0; i < C.length; i++) {
-    value += C[i] * (x[`x${i + 1}`] ?? 0);
-  }
-  return value;
-}
-
 function createZeroSolution(totalVars: number) {
   const solution: Record<string, number> = {};
   for (let i = 1; i <= totalVars; i++) {
     solution[`x${i}`] = 0;
   }
   return solution;
-}
-
-function cloneSteps(steps: Step[]): Step[] {
-  return steps.map(step => ({
-    ...step,
-    matrix: cloneM(step.matrix),
-    z: [...step.z],
-    potentialPivots: [...step.potentialPivots],
-    colsVariables: [...step.colsVariables],
-    rowVariables: [...step.rowVariables],
-  }));
-}
-
-function normalizeRHS(matrix: number[][]): number[][] {
-
-  const m = matrix.map(row => [...row]);
-
-  for (let i = 0; i < m.length; i++) {
-    if (m[i][m[0].length - 1] < 0) {
-      for (let j = 0; j < m[0].length; j++) {
-        m[i][j] *= -1;
-      }
-    }
-  }
-
-  return m;
 }
 
 function buildArtificialTargetFunction(matrix: number[][]): number[] {
@@ -264,30 +190,6 @@ function buildArtificialTargetFunction(matrix: number[][]): number[] {
   }
 
   return z;
-}
-
-function pivot(matrix: number[][], pivotRow: number, pivotCol: number) {
-
-  const pivotValue = matrix[pivotRow][pivotCol];
-
-  // Normalize pivot row
-  for (let j = 0; j < matrix[0].length; j++) {
-    matrix[pivotRow][j] /= pivotValue;
-  }
-
-  // Eliminate other rows
-  for (let i = 0; i < matrix.length; i++) {
-
-    if (i === pivotRow) continue;
-
-    const factor = matrix[i][pivotCol];
-
-    for (let j = 0; j < matrix[0].length; j++) {
-      matrix[i][j] -= factor * matrix[pivotRow][j];
-    }
-  }
-
-  return matrix;
 }
 
 /////////////////////////////////////////////////////////
@@ -353,16 +255,8 @@ function extractSolution(
 
 /////////////////////////////////////////////////////////
 
-function cloneM(matrix: number[][]) {
-  return matrix.map(r => [...r]);
-}
-
 function isAllZero(z: number[]) {
   return z.every(v => Math.abs(v) < 1e-10);
-}
-
-function neg(v: number) {
-  return v < -1e-10;
 }
 
 function isSameVector(a: number[], b: number[]) {

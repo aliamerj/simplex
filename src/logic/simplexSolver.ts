@@ -1,5 +1,6 @@
-import type { ProblemData, Solution, SolutionType, Step } from "@/types";
-import { buildMatrix, cloneM, neg, performPivot, pos } from "./utils";
+import type { ProblemData, Solution, Step } from "@/types";
+import { buildMatrix, cloneM, performPivot, pos } from "./utils";
+import { cloneSteps, computeObjectiveFromX, findPotentialPivots, normalizeRhs, resolveSolutionType, SIMPLEX_RATIO_EPSILON } from "./solverCommon";
 
 type SimplexState = {
   matrix: number[][];
@@ -131,7 +132,10 @@ function restoreStateFromStep(problem: ProblemData, step: Step): SimplexState {
 }
 
 function createSnapshot(problem: ProblemData, state: SimplexState): Step {
-  const { potentialPivots, hasNegative } = findPotentialPivots(state.matrix, state.z);
+  const { potentialPivots, hasNegative } = findPotentialPivots(state.matrix, state.z, {
+    canLeaveBasis: pos,
+    ratioEpsilon: SIMPLEX_RATIO_EPSILON,
+  });
 
   return {
     matrix: cloneM(state.matrix),
@@ -141,49 +145,6 @@ function createSnapshot(problem: ProblemData, state: SimplexState): Step {
     rowVariables: state.basis.map(col => `x${col + 1}`),
     solutionType: resolveSolutionType(hasNegative, potentialPivots),
   };
-}
-
-function resolveSolutionType(hasNegative: boolean, potentialPivots: [number, number][]): SolutionType {
-  if (!hasNegative) {
-    return 'optimal';
-  }
-
-  if (potentialPivots.length === 0) {
-    return 'unbounded';
-  }
-
-  return 'not-solved';
-}
-
-function findPotentialPivots(matrix: number[][], z: number[]) {
-  const potentialPivots: [number, number][] = [];
-  const rhsIndex = matrix[0].length - 1;
-  let hasNegative = false;
-
-  for (let col = 0; col < z.length - 1; col++) {
-    if (!neg(z[col])) continue;
-
-    hasNegative = true;
-
-    let leavingRow = -1;
-    let minRatio = Infinity;
-
-    for (let row = 0; row < matrix.length; row++) {
-      if (!pos(matrix[row][col])) continue;
-
-      const ratio = matrix[row][rhsIndex] / matrix[row][col];
-      if (ratio < minRatio - EPS) {
-        minRatio = ratio;
-        leavingRow = row;
-      }
-    }
-
-    if (leavingRow !== -1) {
-      potentialPivots.push([leavingRow, col]);
-    }
-  }
-
-  return { potentialPivots, hasNegative };
 }
 
 function isBasisLengthValid(problem: ProblemData, basis: number[]) {
@@ -204,21 +165,6 @@ function isValidBasisForGauss(matrix: number[][], basis: number[]) {
 function isBasicFeasible(matrix: number[][]) {
   const rhsIndex = matrix[0].length - 1;
   return matrix.every(row => row[rhsIndex] >= -EPS);
-}
-
-function normalizeRhs(matrix: number[][]) {
-  const normalized = cloneM(matrix);
-  const rhsIndex = normalized[0].length - 1;
-
-  for (let row = 0; row < normalized.length; row++) {
-    if (normalized[row][rhsIndex] >= 0) continue;
-
-    for (let col = 0; col < normalized[row].length; col++) {
-      normalized[row][col] *= -1;
-    }
-  }
-
-  return normalized;
 }
 
 function computeTargetFunction(problem: ProblemData, matrix: number[][], basis: number[]) {
@@ -267,16 +213,6 @@ function extractSimplexSolution(problem: ProblemData, steps: Step[]) {
   return solution;
 }
 
-function computeObjectiveFromX(x: Record<string, number>, objectiveCoefficients: number[]) {
-  let value = 0;
-
-  for (let i = 0; i < objectiveCoefficients.length; i++) {
-    value += (objectiveCoefficients[i] ?? 0) * (x[`x${i + 1}`] ?? 0);
-  }
-
-  return value;
-}
-
 function createVariableNames(numVariables: number) {
   return Array.from({ length: numVariables }, (_, i) => `x${i + 1}`);
 }
@@ -323,17 +259,6 @@ export function doSolveSimplex(
     method: 'simplex',
     problem,
   };
-}
-
-function cloneSteps(steps: Step[]): Step[] {
-  return steps.map(step => ({
-    ...step,
-    matrix: cloneM(step.matrix),
-    z: [...step.z],
-    potentialPivots: [...step.potentialPivots],
-    colsVariables: [...step.colsVariables],
-    rowVariables: [...step.rowVariables],
-  }));
 }
 
 export function solveGauss(

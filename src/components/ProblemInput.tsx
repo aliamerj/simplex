@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { ProblemData } from '@/types';
 import { validateProblemData } from '@/utils/validation';
+import { parseNumericInput } from '@/utils/fractionUtils';
 
 interface ProblemInputProps {
   problem: ProblemData;
@@ -170,8 +171,8 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
     }
 
     // Parse the value, use appropriate default if empty or invalid
-    const numValue = displayValue === '' ? 0 : parseFloat(displayValue);
-    const finalValue = isNaN(numValue) ? 0 : numValue;
+    // Keep user input flexible: both "4.5" and "9/2" are accepted.
+    const finalValue = parseNumericInput(displayValue, 0);
 
     // Update the actual problem data
     const newProblem = { ...localProblem };
@@ -218,24 +219,15 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
     const updatedProblem = { ...localProblem };
 
     // Process objective coefficients
-    updatedProblem.objectiveCoefficients = inputValues.objective.map(val => {
-      const num = val === '' ? 0 : parseFloat(val);
-      return isNaN(num) ? 0 : num;
-    });
+    updatedProblem.objectiveCoefficients = inputValues.objective.map(val => parseNumericInput(val, 0));
 
     // Process constraint matrix
     updatedProblem.constraintMatrix = inputValues.constraints.map(row =>
-      row.map(val => {
-        const num = val === '' ? 0 : parseFloat(val);
-        return isNaN(num) ? 0 : num;
-      })
+      row.map(val => parseNumericInput(val, 0))
     );
 
     // Process RHS
-    updatedProblem.rightHandSide = inputValues.rhs.map(val => {
-      const num = val === '' ? 0 : parseFloat(val);
-      return isNaN(num) ? 0 : num;
-    });
+    updatedProblem.rightHandSide = inputValues.rhs.map(val => parseNumericInput(val, 0));
 
     // Process dimensions
     updatedProblem.numVariables = inputValues.numVariables === '' ? 1 :
@@ -294,7 +286,7 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
 
         setErrors([]);
         onUpdate(parsed);
-      } catch (err) {
+      } catch {
         setErrors(["Не удалось загрузить файл. Неверный формат JSON."]);
       }
     };
