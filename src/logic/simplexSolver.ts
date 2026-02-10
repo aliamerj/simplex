@@ -1,5 +1,5 @@
 import type { ProblemData, Solution, Step } from "@/types";
-import { buildMatrix, cloneA, cloneM, extractColumnsForDisplay, extractZForDisplay, neg, performPivot, pos } from "./utils";
+import { buildMatrix, cloneM, extractColumnsForDisplay, extractZForDisplay, neg, performPivot, pos } from "./utils";
 
 export function solveSimplex(problem: ProblemData, baseVector: number[]): Solution {
 
@@ -20,6 +20,23 @@ export function solveSimplex(problem: ProblemData, baseVector: number[]): Soluti
   // If number of basic variables ≠ number of constraints,
   // we do not have a valid initial basis → infeasible
   if (basis.length !== problem.numConstraints) {
+    return {
+      steps: [{
+        solutionType: 'infeasible',
+        matrix: [],
+        z: [],
+        potentialPivots: [],
+        colsVariables: [],
+        rowVariables: [],
+      }],
+      objective: NaN,
+      x: {},
+      method: 'simplex',
+      problem,
+    };
+  }
+
+  if (!isValidBasis(matrix, basis)) {
     return {
       steps: [{
         solutionType: 'infeasible',
@@ -86,10 +103,11 @@ export function doSolveSimplex(
   targetFunction[totalCols - 1] = 0;
 
   // Transform target function into canonical form
-  targetFunction = computeTargetFunction(targetFunction, matrix, basis);
+  targetFunction = computeTargetFunction(problem, matrix, basis);
+
 
   // Determine non-basic variables (used for display)
-  const nonBasicVariables: number[] = [];
+  let nonBasicVariables = getNonBasic(totalCols, basis);
   for (let i = 0; i < totalCols - 1; i++) {
     if (!basis.includes(i)) {
       nonBasicVariables.push(i);
@@ -179,21 +197,20 @@ export function doSolveSimplex(
     const [pivotRow, pivotCol] = potentialPivots[0];
 
     // Update basis and non-basic variables
-    const leavingVar = basis[pivotRow];
     basis[pivotRow] = pivotCol;
 
     // Update non-basic variables
     const enteringIndex = nonBasicVariables.indexOf(pivotCol);
     if (enteringIndex !== -1) {
-      nonBasicVariables[enteringIndex] = leavingVar;
+      nonBasicVariables = getNonBasic(totalCols, basis);
     }
 
     // Perform pivot operation on the matrix
     matrix = performPivot(matrix, pivotRow, pivotCol)
 
- 
+    //  
     // Recompute target function
-    targetFunction = computeTargetFunction(targetFunction, matrix, basis);
+    targetFunction = computeTargetFunction(problem, matrix, basis);
 
     // Update row labels
     rowVars = basis.map(i => `x${i + 1}`);
@@ -215,25 +232,22 @@ function computeBasisSolution(
   basis: number[],
   numVariables: number
 ): Record<string, number> {
+
   const solution: Record<string, number> = {};
 
-  // Initialize all variables to 0
+  // Initialize all variables
   for (let i = 0; i < numVariables; i++) {
     solution[`x${i + 1}`] = 0;
   }
 
+  const rhs = matrix[0].length - 1;
 
-  // Assign values to basic variables from RHS
-  for (let row = 0; row < matrix.length; row++) {
-    const basisIndex = basis[row];
-    if (basisIndex < numVariables) {
-      // Find the column in this row that has 1
-      for (let col = 0; col < matrix[row].length - 1; col++) {
-        if (matrix[row][col] - 1 < 1e-10 && col === basisIndex) {
-          solution[`x${basisIndex + 1}`] = matrix[row][matrix[row].length - 1];
-          break;
-        }
-      }
+  for (let row = 0; row < basis.length; row++) {
+
+    const col = basis[row];
+
+    if (col < numVariables) {
+      solution[`x${col + 1}`] = matrix[row][rhs];
     }
   }
 
@@ -243,50 +257,38 @@ function computeBasisSolution(
 
 // Transform target function to canonical form
 function computeTargetFunction(
-  targetFunction: number[],
+  problem: ProblemData,
   matrix: number[][],
   basis: number[]
 ): number[] {
-  const rows = matrix.length;
-  const cols = matrix[0].length; // includes RHS
 
-  // Create a copy of the target function
-  const newTarget = cloneA(targetFunction);
+  const cols = matrix[0].length;
+  const z = new Array(cols).fill(0);
 
-  // For each row, find the basic variable (column with 1 in that row)
-  for (let i = 0; i < rows; i++) {
-    let basisIndex = -1;
+  // Fill original objective coefficients
+  for (let i = 0; i < problem.numVariables; i++) {
+    z[i] = problem.objectiveCoefficients[i];
+  }
 
-    // Find which column in this row has 1 (and is in basis)
-    for (let j = 0; j < cols - 1; j++) {
-      if (Math.abs(matrix[i][j] - 1) < 1e-10 && basis.includes(j)) {
-        basisIndex = j;
-        break;
-      }
-    }
+  // RHS
+  z[cols - 1] = 0;
 
-    if (basisIndex === -1) {
-      // Couldn't find basic variable in this row
-      continue;
-    }
+  // Canonical transformation
+  for (let row = 0; row < basis.length; row++) {
 
-    // Get the coefficient of this basic variable in the target function
-    const basisCoefficient = targetFunction[basisIndex];
+    const basicIndex = basis[row];
 
-    // Update all non-basic columns (and RHS)
-    for (let k = 0; k < cols; k++) {
-      if (k !== basisIndex) {
-        newTarget[k] = newTarget[k] - basisCoefficient * matrix[i][k];
-      }
+    // coefficient of basic variable in objective
+    const cB = problem.objectiveCoefficients[basicIndex] ?? 0;
+
+    if (Math.abs(cB) < 1e-10) continue;
+
+    for (let col = 0; col < cols; col++) {
+      z[col] -= cB * matrix[row][col];
     }
   }
 
-  // Set coefficients of basic variables to 0
-  for (const basisIndex of basis) {
-    newTarget[basisIndex] = 0;
-  }
-
-  return newTarget;
+  return z;
 }
 
 
@@ -316,7 +318,7 @@ export function solveGauss(
 
     // Normalize the pivot row by the pivot element
     const pivot = coeffs[i][minor];
-    if (pivot > 1e-10) {
+    if (Math.abs(pivot) > 1e-10) {
       for (let j = 0; j < m; j++) {
         coeffs[i][j] /= pivot;
       }
@@ -334,4 +336,29 @@ export function solveGauss(
   }
 
   return coeffs;
+}
+
+function getNonBasic(totalCols: number, basis: number[]): number[] {
+  const result: number[] = [];
+
+  for (let i = 0; i < totalCols - 1; i++) {
+    if (!basis.includes(i)) {
+      result.push(i);
+    }
+  }
+
+  return result;
+}
+
+function isValidBasis(matrix: number[][], basis: number[]): boolean {
+
+  for (let row = 0; row < basis.length; row++) {
+    const col = basis[row];
+
+    if (Math.abs(matrix[row][col]) < 1e-10) {
+      return false;
+    }
+  }
+
+  return true;
 }

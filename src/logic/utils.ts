@@ -7,7 +7,8 @@ export const pos = (x: number) => x > EPS;
 export const zero = (x: number) => Math.abs(x) < EPS;
 
 export const cloneM = (m: number[][]) => m.map(r => [...r]);
-export const cloneA = (a: number[]) => [...a];
+export const cloneA = (a: any[]) => [...a];
+
 
 export function extractColumnsForDisplay(
   matrix: number[][],
@@ -92,6 +93,8 @@ export function buildMatrix(problem: ProblemData): number[][] {
   return matrix;
 }
 
+export const getExampleProblem6 = (): ProblemData => ({ numVariables: 5, numConstraints: 3, objectiveCoefficients: [1,1,1,1,1], constraintMatrix: [[1,1, 2, 0,0], [0, -2, -2, 1, -1], [1, -1, 6, 1, 1]], rightHandSide: [6, -6, 12], objectiveType: 'min', });
+export const getExampleProblem5 = (): ProblemData => ({ numVariables: 5, numConstraints: 3, objectiveCoefficients: [2, 1, -1, 3, -2], constraintMatrix: [[8, 2, 3, 9, 9], [5, 1, 2, 5, 6], [1, 1, 0, 3, 0]], rightHandSide: [30, 19, 3], objectiveType: 'min', });
 export const getExampleProblem4 = (): ProblemData => ({ numVariables: 3, numConstraints: 3, objectiveCoefficients: [-1, 1, 0], constraintMatrix: [[-1, 3, 0], [1, -1, 0], [2, 1, 0]], rightHandSide: [6, 3, 9], objectiveType: 'min', });
 export const getExampleProblem = (): ProblemData => ({ numVariables: 4, numConstraints: 2, objectiveCoefficients: [-2, -1, -3, -1], constraintMatrix: [[1, 2, 5, -1], [1, -1, -1, 2],], rightHandSide: [4, 1], objectiveType: 'min', });
 export const getExampleProblem2 = (): ProblemData => ({ numVariables: 5, numConstraints: 3, objectiveCoefficients: [-1, 1, 0, 0, 0], constraintMatrix: [[2, -4, -1, 1, 0], [4, -3, -1, 1, 1], [1, 4, 1, 0, 1]], rightHandSide: [-3, 6, 15], objectiveType: 'min', });
