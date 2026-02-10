@@ -31,7 +31,6 @@ export function solveArtificial(problem: ProblemData): Solution {
 
   const x = extractSolutionFromSteps(problem, steps);
   const objective = computeObjectiveFromX(x, problem.objectiveCoefficients);
-
   return {
     steps,
     objective,
@@ -77,10 +76,6 @@ export function solveArtificialStep(
 
   return appendNextSnapshot(problem, steps, state);
 }
-
-/////////////////////////////////////////////////////////
-// Helpers
-/////////////////////////////////////////////////////////
 
 function createInitialState(problem: ProblemData): SolverState {
   const matrix = normalizeRHS(buildMatrix(problem));
@@ -202,7 +197,7 @@ function applyPivotToState(state: SolverState, pivotPoint: [number, number]) {
   state.z = finalized[finalized.length - 1];
 }
 
-function extractSolutionFromSteps(problem: ProblemData, steps: Step[]) {
+export function extractSolutionFromSteps(problem: ProblemData, steps: Step[]) {
   const lastStep = steps.at(-1);
 
   if (!lastStep) {
@@ -212,7 +207,7 @@ function extractSolutionFromSteps(problem: ProblemData, steps: Step[]) {
   return extractSolution(lastStep.matrix, lastStep.rowVariables, problem.numVariables);
 }
 
-function computeObjectiveFromX(x: Record<string, number>, C: number[]) {
+export function computeObjectiveFromX(x: Record<string, number>, C: number[]) {
   let value = 0;
   for (let i = 0; i < C.length; i++) {
     value += C[i] * (x[`x${i + 1}`] ?? 0);
@@ -322,7 +317,7 @@ function rebuildOriginalZ(
     if (coeff === 0) continue;
 
     for (let j = 0; j < cols; j++) {
-      newZ[j] -= coeff * matrix[i][j];
+      newZ[j] -= coeff * matrix[i][j] * -1;
     }
   }
 

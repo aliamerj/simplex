@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import type { ProblemData, Solution } from '@/types';
 import { getExampleProblem6 } from '@/logic/utils';
 import { solveSimplex } from '@/logic/simplexSolver';
-import { solveArtificial, solveArtificialStep } from '@/logic/artificial';
+import { computeObjectiveFromX, extractSolutionFromSteps, solveArtificial, solveArtificialStep } from '@/logic/artificial';
 
 export const useSimplexSolver = (initialProblem?: ProblemData) => {
   const [fractions, setFractions] = useState<boolean>(false);
@@ -66,10 +66,13 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
         }));
 
       const steps = solveArtificialStep(prev.problem, truncatedSteps, pivotIndex);
-
+      const x = extractSolutionFromSteps(prev.problem, steps);
+      const objective = computeObjectiveFromX(x, prev.problem.objectiveCoefficients);
       return {
         ...prev,
         steps,
+        x,
+        objective
       };
     });
   }, []);
