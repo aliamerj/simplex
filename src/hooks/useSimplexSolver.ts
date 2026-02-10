@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import type { ProblemData, Solution } from '@/types';
 import { getExampleProblem6 } from '@/logic/utils';
 import { solveSimplex, solveSimplexStep } from '@/logic/simplexSolver';
-import { computeObjectiveFromX, extractSolutionFromSteps, solveArtificial, solveArtificialStep } from '@/logic/artificial';
+import { extractSolutionFromSteps, solveArtificial, solveArtificialStep } from '@/logic/artificial';
+import { computeObjectiveFromX } from '@/logic/solverCommon';
 
 export const useSimplexSolver = (initialProblem?: ProblemData) => {
   const [fractions, setFractions] = useState<boolean>(false);

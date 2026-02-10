@@ -66,6 +66,38 @@ export const formatTableauValue = (value: number, useFractions: boolean): string
   }
 };
 
+/**
+ * Parses user numeric input supporting both decimals ("4.5") and fractions ("9/2").
+ * Returns fallback for invalid input (e.g. "abc", "1/0").
+ */
+export const parseNumericInput = (rawValue: string, fallback = 0): number => {
+  const normalized = rawValue.trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  if (normalized.includes('/')) {
+    const [left, right, ...rest] = normalized.split('/').map(part => part.trim());
+
+    if (rest.length > 0 || !left || !right) {
+      return fallback;
+    }
+
+    const numerator = Number(left);
+    const denominator = Number(right);
+
+    if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) {
+      return fallback;
+    }
+
+    return numerator / denominator;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
 // Функция для форматирования чисел в UI компонентах
 export const formatDisplayValue = (value: number, useFractions: boolean): string => {
   if (useFractions) {
