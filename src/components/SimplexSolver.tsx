@@ -27,6 +27,7 @@ interface Props {
 
 export const SimplexSolver: React.FC<Props> = ({ problem }) => {
   const solver = useSimplexSolver(problem)
+  const { solveAll, reset, startStepByStep, solveStepByStep } = solver
 
   const steps = solver.solution.steps
   const lastStep = steps.at(-1)
@@ -35,13 +36,13 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
 
   const [useCustomBasis, setUseCustomBasis] = useState(false)
   const [basisInput, setBasisInput] = useState('')
-  const [basisError, setBasisError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('tableau')
+  const [stepByStepMode, setStepByStepMode] = useState(false)
 
   /* ---------------- BASIS PARSER ---------------- */
 
-  const parseBasis = useCallback((): number[] | null => {
-    if (!basisInput.trim()) return null
+  const parseBasis = useCallback((): { basis: number[] | null; error: string | null } => {
+    if (!basisInput.trim()) return { basis: null, error: null }
 
     const parts = basisInput.split(',').map(p => p.trim())
     const basis: number[] = []
@@ -49,30 +50,55 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
     for (const p of parts) {
       const v = Number(p)
       if (!Number.isInteger(v)) {
-        setBasisError(`Некорректное значение: ${p}`)
-        return null
+        return { basis: null, error: `Некорректное значение: ${p}` }
       }
       if (v < 0 || v >= problem.numVariables) {
-        setBasisError(`x${v + 1} вне диапазона`)
-        return null
+        return { basis: null, error: `x${v + 1} вне диапазона` }
       }
       basis.push(v)
     }
 
-    setBasisError(null)
-    return basis
+    return { basis, error: null }
   }, [basisInput, problem])
+
+  const basisParseResult = useMemo(() => parseBasis(), [parseBasis])
+  const basisError = basisParseResult.error
 
   /* ---------------- ACTIONS ---------------- */
 
   useEffect(() => {
-    if (useCustomBasis) {
-      const b = parseBasis()
-      if (b) solver.solveAll(b)
-    } else {
-      solver.solveAll([])
+    reset()
+
+    const basis = useCustomBasis ? (basisParseResult.basis ?? null) : []
+
+    if (stepByStepMode) {
+      if (basis !== null) {
+        startStepByStep(basis)
+      }
+      return
     }
-  }, [basisInput])
+
+    if (useCustomBasis) {
+      if (basis) solveAll(basis)
+      return
+    }
+
+    solveAll([])
+  }, [
+    basisInput,
+    useCustomBasis,
+    stepByStepMode,
+    basisParseResult,
+    reset,
+    solveAll,
+    startStepByStep,
+  ])
+
+  const handlePivotSelect = useCallback((stepIndex: number, pivotIndex: number) => {
+    if (!stepByStepMode) return
+    const basis = useCustomBasis ? (basisParseResult.basis ?? []) : []
+    solveStepByStep(stepIndex, pivotIndex, basis)
+  }, [solveStepByStep, stepByStepMode, useCustomBasis, basisParseResult.basis])
 
   /* ---------------- DERIVED ---------------- */
 
@@ -224,14 +250,29 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                   <div className="flex items-center gap-3">
                     <Square className="h-5 w-5 text-muted-foreground" />
                     <div>
-                      <Label htmlFor="custom-basis" className="font-medium">Начальный базис</Label>
-                      <p className="text-xs text-muted-foreground">Задать базисные переменные</p>
+                      <Label htmlFor="custom-basis" className="font-medium">Начальный базис (indexBasis)</Label>
+                      <p className="text-xs text-muted-foreground">basis[row] = индекс столбца базисной переменной в строке row</p>
                     </div>
                   </div>
                   <Switch
                     id="custom-basis"
                     checked={useCustomBasis}
                     onCheckedChange={setUseCustomBasis}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-3">
+                    <Table2 className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <Label htmlFor="step-by-step" className="font-medium">Пошаговый режим</Label>
+                      <p className="text-xs text-muted-foreground">Выбор опорного элемента вручную</p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="step-by-step"
+                    checked={stepByStepMode}
+                    onCheckedChange={setStepByStepMode}
                   />
                 </div>
               </div>
@@ -243,7 +284,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                   <div className="space-y-3">
                     <div>
                       <Label htmlFor="basis-input" className="text-sm">
-                        Индексы базисных переменных
+                        Массив indexBasis (по строкам ограничений)
                         <span className="text-xs text-muted-foreground ml-2">
                           (0-{problem.numVariables - 1})
                         </span>
@@ -253,7 +294,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                           id="basis-input"
                           value={basisInput}
                           onChange={e => setBasisInput(e.target.value)}
-                          placeholder={`0,1,2,... (${problem.numConstraints} переменных)`}
+                          placeholder={`Например: 2,4,5 (ровно ${problem.numConstraints} индексов)`}
                           className={`flex-1 ${basisError ? 'border-destructive' : ''}`}
                         />
                       </div>
@@ -266,7 +307,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
                       <Info className="h-3 w-3 inline mr-1" />
-                      Введите индексы через запятую. Например: для базиса (x₁, x₂, s₁) введите "0,1,2"
+                      Введите индексы столбцов через запятую в порядке строк ограничений: indexBasis[row] = columnIndex.
                     </div>
                   </div>
                 </div>
@@ -352,6 +393,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                             <SimplexTableau
                               step={step}
                               useFractions={solver.fractions}
+                              onPivotSelect={(pivotIndex) => handlePivotSelect(index, pivotIndex)}
                             />
                           </div>
                         </CardContent>

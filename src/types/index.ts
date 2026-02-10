@@ -17,6 +17,7 @@ export type Step = {
   potentialPivots: [number, number][],
   colsVariables: string[],
   rowVariables: string[],
+  selectedPivotIndex?: number,
   solutionType?: SolutionType;
 }
 
