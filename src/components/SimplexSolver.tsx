@@ -58,6 +58,20 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
       basis.push(v)
     }
 
+    if (basis.length !== problem.numConstraints) {
+      return {
+        basis: null,
+        error: `Нужно ввести ровно ${problem.numConstraints} индексов (по одному на каждое ограничение)`
+      }
+    }
+
+    if (new Set(basis).size !== basis.length) {
+      return {
+        basis: null,
+        error: 'Индексы в indexBasis должны быть уникальными'
+      }
+    }
+
     return { basis, error: null }
   }, [basisInput, problem])
 
@@ -96,7 +110,10 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
 
   const handlePivotSelect = useCallback((stepIndex: number, pivotIndex: number) => {
     if (!stepByStepMode) return
-    const basis = useCustomBasis ? (basisParseResult.basis ?? []) : []
+
+    if (useCustomBasis && !basisParseResult.basis) return
+
+    const basis = useCustomBasis ? (basisParseResult.basis as number[]) : []
     solveStepByStep(stepIndex, pivotIndex, basis)
   }, [solveStepByStep, stepByStepMode, useCustomBasis, basisParseResult.basis])
 
