@@ -27,6 +27,7 @@ interface Props {
 
 export const SimplexSolver: React.FC<Props> = ({ problem }) => {
   const solver = useSimplexSolver(problem)
+  const { solveAll, reset, startStepByStep, solveStepByStep } = solver
 
   const steps = solver.solution.steps
   const lastStep = steps.at(-1)
@@ -35,13 +36,13 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
 
   const [useCustomBasis, setUseCustomBasis] = useState(false)
   const [basisInput, setBasisInput] = useState('')
-  const [basisError, setBasisError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState('tableau')
+  const [stepByStepMode, setStepByStepMode] = useState(false)
 
   /* ---------------- BASIS PARSER ---------------- */
 
-  const parseBasis = useCallback((): number[] | null => {
-    if (!basisInput.trim()) return null
+  const parseBasis = useCallback((): { basis: number[] | null; error: string | null } => {
+    if (!basisInput.trim()) return { basis: null, error: null }
 
     const parts = basisInput.split(',').map(p => p.trim())
     const basis: number[] = []
@@ -49,30 +50,51 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
     for (const p of parts) {
       const v = Number(p)
       if (!Number.isInteger(v)) {
-        setBasisError(`Некорректное значение: ${p}`)
-        return null
+        return { basis: null, error: `Некорректное значение: ${p}` }
       }
       if (v < 0 || v >= problem.numVariables) {
-        setBasisError(`x${v + 1} вне диапазона`)
-        return null
+        return { basis: null, error: `x${v + 1} вне диапазона` }
       }
       basis.push(v)
     }
 
-    setBasisError(null)
-    return basis
+    return { basis, error: null }
   }, [basisInput, problem])
+
+  const basisParseResult = useMemo(() => parseBasis(), [parseBasis])
+  const basisError = basisParseResult.error
 
   /* ---------------- ACTIONS ---------------- */
 
   useEffect(() => {
-    if (useCustomBasis) {
-      const b = parseBasis()
-      if (b) solver.solveAll(b)
-    } else {
-      solver.solveAll([])
+    reset()
+
+    if (stepByStepMode) {
+      startStepByStep()
+      return
     }
-  }, [basisInput])
+
+    if (useCustomBasis) {
+      const { basis } = basisParseResult
+      if (basis) solveAll(basis)
+      return
+    }
+
+    solveAll([])
+  }, [
+    basisInput,
+    useCustomBasis,
+    stepByStepMode,
+    basisParseResult,
+    reset,
+    solveAll,
+    startStepByStep,
+  ])
+
+  const handlePivotSelect = useCallback((stepIndex: number, pivotIndex: number) => {
+    if (!stepByStepMode) return
+    solveStepByStep(stepIndex, pivotIndex)
+  }, [solveStepByStep, stepByStepMode])
 
   /* ---------------- DERIVED ---------------- */
 
@@ -232,12 +254,28 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                     id="custom-basis"
                     checked={useCustomBasis}
                     onCheckedChange={setUseCustomBasis}
+                    disabled={stepByStepMode}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
+                  <div className="flex items-center gap-3">
+                    <Table2 className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <Label htmlFor="step-by-step" className="font-medium">Пошаговый режим</Label>
+                      <p className="text-xs text-muted-foreground">Выбор опорного элемента вручную</p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="step-by-step"
+                    checked={stepByStepMode}
+                    onCheckedChange={setStepByStepMode}
                   />
                 </div>
               </div>
 
               {/* Basis Input Panel */}
-              {useCustomBasis && (
+              {useCustomBasis && !stepByStepMode && (
                 <div className="space-y-4">
                   <h4 className="font-medium text-sm">Настройка базиса</h4>
                   <div className="space-y-3">
@@ -352,6 +390,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                             <SimplexTableau
                               step={step}
                               useFractions={solver.fractions}
+                              onPivotSelect={(pivotIndex) => handlePivotSelect(index, pivotIndex)}
                             />
                           </div>
                         </CardContent>

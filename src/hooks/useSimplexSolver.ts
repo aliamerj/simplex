@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import type { ProblemData, Solution } from '@/types';
 import { getExampleProblem6 } from '@/logic/utils';
 import { solveSimplex } from '@/logic/simplexSolver';
-import { solveArtificial } from '@/logic/artificial';
+import { computeObjectiveFromX, extractSolutionFromSteps, solveArtificial, solveArtificialStep } from '@/logic/artificial';
 
 export const useSimplexSolver = (initialProblem?: ProblemData) => {
   const [fractions, setFractions] = useState<boolean>(false);
@@ -19,7 +19,7 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
   });
 
 
-  const solveAll = (basis: number[]) => {
+  const solveAll = useCallback((basis: number[]) => {
     let result: Solution;
     if (basis.length === 0) {
       result = solveArtificial(solution.problem)
@@ -31,7 +31,51 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
       ...prev,
       ...result,
     }));
-  };
+  }, [solution.problem]);
+
+  const startStepByStep = useCallback(() => {
+    setSolution(prev => {
+      if (prev.steps.length > 0) {
+        return prev;
+      }
+
+      const steps = solveArtificialStep(prev.problem, []);
+
+      return {
+        ...prev,
+        steps,
+      };
+    });
+  }, []);
+
+  const solveStepByStep = useCallback((stepIndex: number, pivotIndex: number) => {
+    setSolution(prev => {
+      if (stepIndex < 0 || stepIndex >= prev.steps.length) {
+        return prev;
+      }
+
+      const truncatedSteps = prev.steps
+        .slice(0, stepIndex + 1)
+        .map(step => ({
+          ...step,
+          matrix: step.matrix.map(row => [...row]),
+          z: [...step.z],
+          potentialPivots: [...step.potentialPivots],
+          colsVariables: [...step.colsVariables],
+          rowVariables: [...step.rowVariables],
+        }));
+
+      const steps = solveArtificialStep(prev.problem, truncatedSteps, pivotIndex);
+      const x = extractSolutionFromSteps(prev.problem, steps);
+      const objective = computeObjectiveFromX(x, prev.problem.objectiveCoefficients);
+      return {
+        ...prev,
+        steps,
+        x,
+        objective
+      };
+    });
+  }, []);
 
   const reset = useCallback(() => {
     setSolution(prev => ({
@@ -44,13 +88,15 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
 
   const toggleFractions = useCallback(() => {
     setFractions(prev => !prev);
-  }, [fractions]);
+  }, []);
 
   return {
     fractions,
     solveAll,
     reset,
     toggleFractions,
+    startStepByStep,
+    solveStepByStep,
     solution,
   };
 };

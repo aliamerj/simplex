@@ -13,11 +13,13 @@ import type { Step } from '@/types';
 interface SimplexTableauProps {
   step: Step;
   useFractions: boolean;
+  onPivotSelect?: (pivotIndex: number) => void;
 }
 
 export const SimplexTableau: React.FC<SimplexTableauProps> = ({
   step,
   useFractions,
+  onPivotSelect,
 }) => {
   if (!step) {
     return (
@@ -50,6 +52,11 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
     return potentialPivots.some(([r, c]) => r === row && c === col);
   };
 
+  const getPivotIndex = (row: number, col: number): number => {
+    if (!potentialPivots || !Array.isArray(potentialPivots)) return -1;
+    return potentialPivots.findIndex(([r, c]) => r === row && c === col);
+  };
+
   // Group potential pivots by row for better display
   const potentialPivotsByRow: Record<number, number[]> = {};
   if (potentialPivots && Array.isArray(potentialPivots)) {
@@ -77,7 +84,7 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
               {colsVariables.map((variable, colIndex) => {
                 // Check if any potential pivot in this column
                 const hasPivotInColumn = hasPivots &&
-                  potentialPivots.some(([_, c]) => c === colIndex);
+                  potentialPivots.some(([, c]) => c === colIndex);
                 return (
                   <th
                     key={colIndex}
@@ -149,6 +156,8 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
                   {/* Coefficients */}
                   {row.map((coeff, colIndex) => {
                     const isPivotCell = isPotentialPivot(rowIndex, colIndex);
+                    const pivotIndex = getPivotIndex(rowIndex, colIndex);
+                    const isSelectedPivot = step.selectedPivotIndex === pivotIndex;
 
                     return (
                       <td
@@ -161,10 +170,17 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
                           }`}
                       >
                         <Tooltip>
-                          <TooltipTrigger className="w-full text-left">
+                          <TooltipTrigger
+                            className={`w-full text-left ${isPivotCell && onPivotSelect ? 'cursor-pointer' : ''}`}
+                            onClick={() => {
+                              if (isPivotCell && onPivotSelect && pivotIndex !== -1) {
+                                onPivotSelect(pivotIndex);
+                              }
+                            }}
+                          >
                             <div className="flex items-center justify-between">
                               <span>{formatCellValue(coeff)}</span>
-                              {isPivotCell && (
+                              {isSelectedPivot && (
                                 <Star className="h-3 w-3 text-yellow-600" />
                               )}
                             </div>
@@ -172,6 +188,7 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
                           <TooltipContent>
                             {colsVariables[colIndex]} = {formatCellValue(coeff)}
                             {isPivotCell && ' (Возможный опорный элемент)'}
+                            {isSelectedPivot && ' (Выбран)'}
                           </TooltipContent>
                         </Tooltip>
                       </td>
@@ -194,7 +211,7 @@ export const SimplexTableau: React.FC<SimplexTableauProps> = ({
 
               {zRow.map((coeff, colIndex) => {
                 const hasPivotInColumn = hasPivots &&
-                  potentialPivots.some(([_, c]) => c === colIndex);
+                  potentialPivots.some(([, c]) => c === colIndex);
                 return (
                   <td
                     key={colIndex}
