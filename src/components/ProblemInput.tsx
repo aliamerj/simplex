@@ -444,7 +444,6 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
                           type="text"
                           value={inputValues.objective[index] || ''}
                           onChange={(e) => handleInputChange('objective', index, null, e.target.value)}
-                          onBlur={() => handleInputBlur('objective', index, null)}
                           className="w-full text-center border-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto text-sm sm:text-base"
                           placeholder="0"
                         />
@@ -510,7 +509,6 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
                             type="text"
                             value={inputValues.constraints[rowIndex]?.[colIndex] || ''}
                             onChange={(e) => handleInputChange('constraint', rowIndex, colIndex, e.target.value)}
-                            onBlur={() => handleInputBlur('constraint', rowIndex, colIndex)}
                             className="w-full text-center text-xs sm:text-sm h-8 sm:h-10"
                             placeholder="0"
                           />
@@ -530,7 +528,6 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
                           type="text"
                           value={inputValues.rhs[rowIndex] || ''}
                           onChange={(e) => handleInputChange('rhs', rowIndex, null, e.target.value)}
-                          onBlur={() => handleInputBlur('rhs', rowIndex, null)}
                           className="w-full text-center bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700 text-xs sm:text-sm h-8 sm:h-10"
                           placeholder="0"
                         />
@@ -558,13 +555,13 @@ export const ProblemInput: React.FC<ProblemInputProps> = ({ problem, onUpdate, s
           </CardDescription>
         </CardHeader>
         <CardContent className="p-4 sm:p-6">
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+          <div className="flex flex-col lg:flex-row gap-3 sm:gap-4">
             <Button
               onClick={handleSubmit}
               size="lg"
             >
               <Save className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
-              <span className="text-sm sm:text-base">Сохранить и решить</span>
+              <span className="text-sm sm:text-base">решить</span>
             </Button>
             <Button
               variant="outline"

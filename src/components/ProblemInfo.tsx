@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
 import type { ProblemData } from '@/types'
+import { formatValue } from '@/utils/fractionUtils'
 import { Separator } from '@radix-ui/react-separator'
 
-export const ProblemInfo = ({ problem, isGrap = false }: { problem: ProblemData, isGrap?: boolean }) => {
+export const ProblemInfo = ({ problem, useFractions, isGrap = false }: { problem: ProblemData, useFractions: boolean, isGrap?: boolean }) => {
   return (<Card>
     <CardHeader>
       <CardTitle>Постановка задачи</CardTitle>
@@ -16,7 +17,7 @@ export const ProblemInfo = ({ problem, isGrap = false }: { problem: ProblemData,
         </div>
         <div className="font-mono text-lg">
           {problem.objectiveType === 'max' ? 'max' : 'min'} Z ={' '}
-          {formatObjective(problem)}
+          {formatObjective(problem, useFractions)}
         </div>
       </div>
 
@@ -30,7 +31,7 @@ export const ProblemInfo = ({ problem, isGrap = false }: { problem: ProblemData,
 
         <div className="space-y-1">
           {problem.constraintMatrix.map((row, i) =>
-            formatConstraintRow(row, problem.rightHandSide[i], i, isGrap)
+            formatConstraintRow(row, problem.rightHandSide[i], i, isGrap, useFractions)
           )}
 
           <div className="font-mono">
@@ -45,7 +46,7 @@ export const ProblemInfo = ({ problem, isGrap = false }: { problem: ProblemData,
   )
 }
 
-const formatCoeff = (value: number, isFirst: boolean) => {
+const formatCoeff = (value: number, isFirst: boolean, useFractions: boolean) => {
   if (Math.abs(value) < 1e-10) return null;
 
   const sign =
@@ -54,15 +55,15 @@ const formatCoeff = (value: number, isFirst: boolean) => {
       : value < 0 ? '−' : '+';
 
   const abs = Math.abs(value);
-  const coeff = abs === 1 ? '' : abs.toString();
+  const coeff = abs === 1 ? '' : formatValue(abs, useFractions);
 
   return `${sign}${coeff}`;
 };
 
-const formatObjective = (problem: ProblemData) => {
+const formatObjective = (problem: ProblemData, useFractions: boolean) => {
   return problem.objectiveCoefficients
     .map((c, i) => {
-      const part = formatCoeff(c, i === 0);
+      const part = formatCoeff(c, i === 0, useFractions);
       if (!part) return null;
 
       return (
@@ -79,10 +80,11 @@ const formatConstraintRow = (
   rhs: number,
   index: number,
   isGrap: boolean,
+  useFractions: boolean
 ) => {
   const terms = row
     .map((coeff, j) => {
-      const part = formatCoeff(coeff, j === 0);
+      const part = formatCoeff(coeff, j === 0, useFractions);
       if (part === null) return null;
 
       return (
