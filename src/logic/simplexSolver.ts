@@ -5,6 +5,7 @@ import { cloneSteps, computeObjectiveFromX, findPotentialPivots, normalizeRhs, r
 type SimplexState = {
   matrix: number[][];
   basis: number[];
+  unbasis: number[];
   z: number[];
 };
 
@@ -28,7 +29,6 @@ function executeSimplexPivot(
     if (col !== pivotCol) {
       newSupportLine[col] = result[pivotRow][col] / supportElement;
     } else {
-      // Keep the same simplex transform as in the teacher Java implementation.
       newSupportLine[col] = 1 / supportElement;
     }
   }
@@ -108,7 +108,7 @@ export function solveSimplexStep(
       ];
     }
 
-    return [...steps, createSnapshot(problem, initial)];
+    return [...steps, createSnapshot(initial)];
   }
 
   const lastStepIndex = steps.length - 1;
@@ -134,10 +134,14 @@ export function solveSimplexStep(
   const [pivotRow, pivotCol] = pivotPoint;
 
   state.matrix = executeSimplexPivot(state.matrix, pivotRow, pivotCol);
-  state.basis[pivotRow] = pivotCol;
-  state.z = computeTargetFunction(problem, state.matrix, state.basis);
 
-  return [...steps, createSnapshot(problem, state)];
+  const leavingVariable = state.basis[pivotRow];
+  state.basis[pivotRow] = state.unbasis[pivotCol];
+  state.unbasis[pivotCol] = leavingVariable;
+
+  state.z = computeTargetFunction(problem, state.matrix, state.basis, state.unbasis);
+
+  return [...steps, createSnapshot(state)];
 }
 
 function createInitialState(problem: ProblemData, indexBasis: number[]): SimplexState | null {
@@ -148,35 +152,37 @@ function createInitialState(problem: ProblemData, indexBasis: number[]): Simplex
   const matrix = normalizeRhs(buildMatrix(problem));
   const basis = [...indexBasis];
 
-  if (!isValidBasisForGauss(matrix, basis)) {
-    return null;
-  }
-
   const canonical = solveGauss(matrix, problem.numConstraints, matrix[0].length, basis);
 
-  if (!isBasicFeasible(canonical)) {
+  if (!isBasisCanonical(canonical, basis) || !isBasicFeasible(canonical)) {
     return null;
   }
 
+  const unbasis = createUnbasis(problem.numVariables, basis);
+  const simplexMatrix = buildSimplexMatrix(canonical, unbasis);
+
   return {
-    matrix: canonical,
+    matrix: simplexMatrix,
     basis,
-    z: computeTargetFunction(problem, canonical, basis),
+    unbasis,
+    z: computeTargetFunction(problem, simplexMatrix, basis, unbasis),
   };
 }
 
 function restoreStateFromStep(problem: ProblemData, step: Step): SimplexState {
   const basis = step.rowVariables.map(name => parseInt(name.slice(1), 10) - 1);
+  const unbasis = step.colsVariables.map(name => parseInt(name.slice(1), 10) - 1);
   const matrix = cloneM(step.matrix);
 
   return {
     matrix,
     basis,
-    z: computeTargetFunction(problem, matrix, basis),
+    unbasis,
+    z: computeTargetFunction(problem, matrix, basis, unbasis),
   };
 }
 
-function createSnapshot(problem: ProblemData, state: SimplexState): Step {
+function createSnapshot(state: SimplexState): Step {
   const { potentialPivots, hasNegative } = findPotentialPivots(state.matrix, state.z, {
     canLeaveBasis: pos,
     ratioEpsilon: SIMPLEX_RATIO_EPSILON,
@@ -186,7 +192,7 @@ function createSnapshot(problem: ProblemData, state: SimplexState): Step {
     matrix: cloneM(state.matrix),
     z: [...state.z],
     potentialPivots,
-    colsVariables: createVariableNames(problem.numVariables),
+    colsVariables: state.unbasis.map(col => `x${col + 1}`),
     rowVariables: state.basis.map(col => `x${col + 1}`),
     solutionType: resolveSolutionType(hasNegative, potentialPivots),
   };
@@ -203,8 +209,17 @@ function isBasisIndicesValid(problem: ProblemData, basis: number[]) {
   return basis.every(col => Number.isInteger(col) && col >= 0 && col < problem.numVariables);
 }
 
-function isValidBasisForGauss(matrix: number[][], basis: number[]) {
-  return basis.every((col, row) => Math.abs(matrix[row][col]) > EPS);
+function isBasisCanonical(matrix: number[][], basis: number[]) {
+  for (let row = 0; row < basis.length; row++) {
+    for (let k = 0; k < basis.length; k++) {
+      const expected = row === k ? 1 : 0;
+      if (Math.abs(matrix[k][basis[row]] - expected) > EPS) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 function isBasicFeasible(matrix: number[][]) {
@@ -212,12 +227,40 @@ function isBasicFeasible(matrix: number[][]) {
   return matrix.every(row => row[rhsIndex] >= -EPS);
 }
 
-function computeTargetFunction(problem: ProblemData, matrix: number[][], basis: number[]) {
-  const cols = matrix[0].length;
-  const z = new Array(cols).fill(0);
+function createUnbasis(numVariables: number, basis: number[]) {
+  const basisSet = new Set(basis);
+  const unbasis: number[] = [];
 
-  for (let col = 0; col < problem.numVariables; col++) {
-    z[col] = problem.objectiveCoefficients[col] ?? 0;
+  for (let col = 0; col < numVariables; col++) {
+    if (!basisSet.has(col)) {
+      unbasis.push(col);
+    }
+  }
+
+  return unbasis;
+}
+
+function buildSimplexMatrix(canonical: number[][], unbasis: number[]) {
+  const rhsIndex = canonical[0].length - 1;
+
+  return canonical.map(row => {
+    const simplexRow = unbasis.map(col => row[col]);
+    simplexRow.push(row[rhsIndex]);
+    return simplexRow;
+  });
+}
+
+function computeTargetFunction(
+  problem: ProblemData,
+  simplexMatrix: number[][],
+  basis: number[],
+  unbasis: number[],
+) {
+  const z = new Array(unbasis.length + 1).fill(0);
+  const rhsIndex = unbasis.length;
+
+  for (let col = 0; col < unbasis.length; col++) {
+    z[col] = problem.objectiveCoefficients[unbasis[col]] ?? 0;
   }
 
   for (let row = 0; row < basis.length; row++) {
@@ -226,8 +269,10 @@ function computeTargetFunction(problem: ProblemData, matrix: number[][], basis: 
 
     if (Math.abs(cB) < EPS) continue;
 
-    for (let col = 0; col < cols; col++) {
-      z[col] -= cB * matrix[row][col];
+    z[rhsIndex] -= cB * simplexMatrix[row][rhsIndex];
+
+    for (let col = 0; col < unbasis.length; col++) {
+      z[col] -= cB * simplexMatrix[row][col];
     }
   }
 
@@ -258,25 +303,24 @@ function extractSimplexSolution(problem: ProblemData, steps: Step[]) {
   return solution;
 }
 
-function createVariableNames(numVariables: number) {
-  return Array.from({ length: numVariables }, (_, i) => `x${i + 1}`);
-}
-
 export function doSolveSimplex(
   problem: ProblemData,
   initialMatrix: number[][],
   initialBasis: number[]
 ): Solution {
+  const unbasis = createUnbasis(problem.numVariables, initialBasis);
+
   const state: SimplexState = {
     matrix: cloneM(initialMatrix),
     basis: [...initialBasis],
-    z: computeTargetFunction(problem, initialMatrix, initialBasis),
+    unbasis,
+    z: computeTargetFunction(problem, initialMatrix, initialBasis, unbasis),
   };
 
   const steps: Step[] = [];
 
   while (true) {
-    const snapshot = createSnapshot(problem, state);
+    const snapshot = createSnapshot(state);
     steps.push(snapshot);
 
     if (snapshot.solutionType !== 'not-solved') {
@@ -290,8 +334,12 @@ export function doSolveSimplex(
 
     const [pivotRow, pivotCol] = pivot;
     state.matrix = executeSimplexPivot(state.matrix, pivotRow, pivotCol);
-    state.basis[pivotRow] = pivotCol;
-    state.z = computeTargetFunction(problem, state.matrix, state.basis);
+
+    const leavingVariable = state.basis[pivotRow];
+    state.basis[pivotRow] = state.unbasis[pivotCol];
+    state.unbasis[pivotCol] = leavingVariable;
+
+    state.z = computeTargetFunction(problem, state.matrix, state.basis, state.unbasis);
   }
 
   const x = extractSimplexSolution(problem, steps);
