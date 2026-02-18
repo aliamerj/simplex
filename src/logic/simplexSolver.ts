@@ -1,5 +1,5 @@
 import type { ProblemData, Solution, Step } from "@/types";
-import { buildMatrix, cloneM, performPivot, pos } from "./utils";
+import { buildMatrix, cloneM, pos } from "./utils";
 import { cloneSteps, computeObjectiveFromX, findPotentialPivots, normalizeRhs, resolveSolutionType, SIMPLEX_RATIO_EPSILON } from "./solverCommon";
 
 type SimplexState = {
@@ -9,6 +9,51 @@ type SimplexState = {
 };
 
 const EPS = 1e-10;
+
+function executeSimplexPivot(
+  matrix: number[][],
+  pivotRow: number,
+  pivotCol: number
+): number[][] {
+  const result = matrix.map(row => [...row]);
+  const supportElement = result[pivotRow][pivotCol];
+
+  if (Math.abs(supportElement) < EPS) {
+    return result;
+  }
+
+  const newSupportLine = new Array(result[pivotRow].length).fill(0);
+
+  for (let col = 0; col < result[pivotRow].length; col++) {
+    if (col !== pivotCol) {
+      newSupportLine[col] = result[pivotRow][col] / supportElement;
+    } else {
+      // Keep the same simplex transform as in the teacher Java implementation.
+      newSupportLine[col] = 1 / supportElement;
+    }
+  }
+
+  result[pivotRow] = newSupportLine;
+
+  for (let row = 0; row < result.length; row++) {
+    if (row === pivotRow) continue;
+
+    const currentCoef = result[row][pivotCol];
+    const newLine = new Array(result[row].length).fill(0);
+
+    for (let col = 0; col < result[row].length; col++) {
+      if (col === pivotCol) {
+        newLine[col] = -(result[row][col] / supportElement);
+      } else {
+        newLine[col] = result[row][col] - currentCoef * result[pivotRow][col];
+      }
+    }
+
+    result[row] = newLine;
+  }
+
+  return result;
+}
 
 export function solveSimplex(problem: ProblemData, indexBasis: number[]): Solution {
   let steps: Step[] = [];
@@ -88,7 +133,7 @@ export function solveSimplexStep(
   const state = restoreStateFromStep(problem, lastStep);
   const [pivotRow, pivotCol] = pivotPoint;
 
-  state.matrix = performPivot(state.matrix, pivotRow, pivotCol);
+  state.matrix = executeSimplexPivot(state.matrix, pivotRow, pivotCol);
   state.basis[pivotRow] = pivotCol;
   state.z = computeTargetFunction(problem, state.matrix, state.basis);
 
@@ -244,7 +289,7 @@ export function doSolveSimplex(
     }
 
     const [pivotRow, pivotCol] = pivot;
-    state.matrix = performPivot(state.matrix, pivotRow, pivotCol);
+    state.matrix = executeSimplexPivot(state.matrix, pivotRow, pivotCol);
     state.basis[pivotRow] = pivotCol;
     state.z = computeTargetFunction(problem, state.matrix, state.basis);
   }
