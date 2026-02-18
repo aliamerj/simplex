@@ -187,7 +187,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-green-600" />
                         <span className="font-mono text-lg font-bold">
-                          Z = {formatValue(solver.solution.objective, solver.fractions)}
+                          Z = {formatValue(solver.solution.steps[solver.solution.steps.length - 1].z[solver.solution.steps[solver.solution.steps.length - 1].z.length - 1] * -1, solver.fractions)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -331,7 +331,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
             </div>
           </CardContent>
         </Card>
-        <ProblemInfo problem={problem} />
+        <ProblemInfo problem={problem} useFractions={solver.fractions} />
       </div>
 
       {/* MAIN CONTENT TABS */}

@@ -1,6 +1,6 @@
 import type { ProblemData, Solution, Step } from "@/types";
 import { buildMatrix, cloneM, neg, performPivot } from "./utils";
-import { cloneSteps, computeObjectiveFromX, findPotentialPivots, normalizeRhs, resolveSolutionType } from "./solverCommon";
+import { cloneSteps, findPotentialPivots, normalizeRhs, resolveSolutionType } from "./solverCommon";
 
 
 type SolverState = {
@@ -31,7 +31,7 @@ export function solveArtificial(problem: ProblemData): Solution {
   }
 
   const x = extractSolutionFromSteps(problem, steps);
-  const objective = computeObjectiveFromX(x, problem.objectiveCoefficients);
+  const objective = steps[steps.length - 1].z[steps[steps.length - 1].z.length - 1] * -1
   return {
     steps,
     objective,
@@ -192,22 +192,23 @@ function buildArtificialTargetFunction(matrix: number[][]): number[] {
   return z;
 }
 
-/////////////////////////////////////////////////////////
-
 function rebuildOriginalZ(
   problem: ProblemData,
   matrix: number[][],
   rowVariables: string[],
-  colsVariables: string[]
+  colsVariables: string[],
 ): number[] {
 
   const cols = matrix[0].length;
+  const rhsIndex = cols - 1;
   const newZ = new Array(cols).fill(0);
 
-  // Copy original coefficients
+  // Copy original coefficients with sign change (except RHS)
   for (let j = 0; j < colsVariables.length; j++) {
     const idx = parseInt(colsVariables[j].substring(1)) - 1;
-    newZ[j] = problem.objectiveCoefficients[idx] ?? 0;
+    const coeff = problem.objectiveCoefficients[idx] ?? 0;
+
+    newZ[j] = (j === rhsIndex) ? coeff : -coeff;
   }
 
   // Substitute basis rows
@@ -219,14 +220,19 @@ function rebuildOriginalZ(
     if (coeff === 0) continue;
 
     for (let j = 0; j < cols; j++) {
-      newZ[j] -= coeff * matrix[i][j] * -1;
+      newZ[j] += coeff * matrix[i][j];
+    }
+  }
+  if (problem.objectiveType === 'min') {
+    // ⭐ Flip signs (+ to - and - to +)
+    for (let j = 0; j < newZ.length; j++) {
+      newZ[j] *= -1;
     }
   }
 
+
   return newZ;
 }
-
-/////////////////////////////////////////////////////////
 
 function extractSolution(
   matrix: number[][],
