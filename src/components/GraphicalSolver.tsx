@@ -324,7 +324,7 @@ export const GraphicalSolver: React.FC<GraphicalSolverProps> = ({ problem }) => 
         </Card>
 
         {/* Problem Info Card */}
-        <ProblemInfo problem={problem} isGrap={true} />
+        <ProblemInfo problem={problem} isGrap={true} useFractions />
       </div>
 
       {/* Main Graph */}
