@@ -86,3 +86,12 @@ export interface Gstep {
   type: 'constraint' | 'objective' | 'feasible' | 'optimal';
   data?: any;
 }
+
+export type SolverState = {
+  matrix: number[][];
+  z: number[];
+  colsVariables: string[];
+  rowVariables: string[];
+  artificialPhase: boolean;
+  solutionType?: SolutionType;
+};

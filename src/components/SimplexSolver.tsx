@@ -41,36 +41,52 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
 
   /* ---------------- BASIS PARSER ---------------- */
 
-  const parseBasis = useCallback((): { basis: number[] | null; error: string | null } => {
-    if (!basisInput.trim()) return { basis: null, error: null }
-
-    const parts = basisInput.split(',').map(p => p.trim())
-    const basis: number[] = []
-
-    for (const p of parts) {
-      const v = Number(p)
-      if (!Number.isInteger(v)) {
-        return { basis: null, error: `Некорректное значение: ${p}` }
+  const parseBasis = useCallback(
+    (): { basis: number[] | null; error: string | null } => {
+      if (!basisInput.trim()) {
+        return { basis: null, error: null };
       }
-      if (v < 0 || v >= problem.numVariables) {
-        return { basis: null, error: `x${v + 1} вне диапазона` }
+
+      const parts = basisInput.split(",").map(p => p.trim());
+      const basis: number[] = [];
+
+      for (const part of parts) {
+        const value = Number(part);
+
+
+        // Must be integer
+        if (!Number.isInteger(value) || part.length === 0) {
+          return { basis: null, error: `Некорректное значение: ${part}` };
+        }
+
+        // Must be valid variable number
+        if (value <= 0 || value > problem.numVariables) {
+          return { basis: null, error: `x${value} вне диапазона` };
+        }
+
+        basis.push(value);
       }
-      basis.push(v)
-    }
 
-    if (basis.length !== problem.numConstraints) {
-      return {
-        basis: null,
-        error: `Нужно ${problem.numConstraints} индексов: indexBasis[row] = индекс столбца базисной переменной`,
+      // Length validation
+      if (basis.length !== problem.numConstraints) {
+        return {
+          basis: null,
+          error: `Нужно ${problem.numConstraints} базисных переменных`,
+        };
       }
-    }
 
-    if (new Set(basis).size !== basis.length) {
-      return { basis: null, error: 'Индексы базиса не должны повторяться' }
-    }
+      // Duplicate validation
+      if (new Set(basis).size !== basis.length) {
+        return {
+          basis: null,
+          error: "Базисные переменные не должны повторяться",
+        };
+      }
 
-    return { basis, error: null }
-  }, [basisInput, problem])
+      return { basis, error: null };
+    },
+    [basisInput, problem]
+  );
 
   const basisParseResult = useMemo(() => parseBasis(), [parseBasis])
   const basisError = basisParseResult.error
@@ -79,6 +95,11 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
 
   useEffect(() => {
     reset()
+
+    // If custom basis enabled AND error → STOP
+    if (useCustomBasis && basisError) {
+      return
+    }
 
     if (stepByStepMode) {
       if (useCustomBasis) {
@@ -98,11 +119,13 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
     }
 
     solveAll([])
+
   }, [
     basisInput,
     useCustomBasis,
     stepByStepMode,
     basisParseResult,
+    basisError,
     reset,
     solveAll,
     startStepByStep,
@@ -117,16 +140,17 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
 
   /* ---------------- DERIVED ---------------- */
 
-  const isOptimal = solutionType === 'optimal'
-  const isUnbounded = solutionType === 'unbounded'
-  const isInfeasible = solutionType === 'infeasible'
-  const isSolving = !isOptimal && !isUnbounded && !isInfeasible && steps.length > 0
-
   const solutionVector = useMemo(() => {
     return `(${Object.values(solver.solution.x)
       .map(v => formatValue(v, solver.fractions))
       .join(', ')})`
+
   }, [solver.solution.x, solver.fractions])
+
+  const isOptimal = solutionType === 'optimal'
+  const isUnbounded = solutionType === 'unbounded' || solutionVector.trim().length === 0
+  const isInfeasible = solutionType === 'infeasible' 
+  const isSolving = !isOptimal && !isUnbounded && !isInfeasible && steps.length > 0 && !(basisError != null && basisError.length > 0)
 
   const getStatusColor = () => {
     if (isOptimal) return 'bg-green-500/20 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800'
@@ -299,9 +323,9 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                   <div className="space-y-3">
                     <div>
                       <Label htmlFor="basis-input" className="text-sm">
-                        Индексы базисных переменных
+                        базисных переменных
                         <span className="text-xs text-muted-foreground ml-2">
-                          (0-{problem.numVariables - 1})
+                          (1-{problem.numVariables})
                         </span>
                       </Label>
                       <div className="flex gap-2 mt-2">
@@ -309,7 +333,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                           id="basis-input"
                           value={basisInput}
                           onChange={e => setBasisInput(e.target.value)}
-                          placeholder={`Например: 2,3,4 (${problem.numConstraints} индекса)`}
+                          placeholder={`Например: 2,3,4 (${problem.numConstraints})`}
                           className={`flex-1 ${basisError ? 'border-destructive' : ''}`}
                         />
                       </div>
@@ -322,8 +346,7 @@ export const SimplexSolver: React.FC<Props> = ({ problem }) => {
                     </div>
                     <div className="text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
                       <Info className="h-3 w-3 inline mr-1" />
-                      Введите indexBasis через запятую: indexBasis[row] = индекс столбца базисной переменной в строке row.
-                      Длина массива должна быть равна числу ограничений ({problem.numConstraints}).
+                      Введите Basis через запятую: "2,3 ..etc"
                     </div>
                   </div>
                 </div>

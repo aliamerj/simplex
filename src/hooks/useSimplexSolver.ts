@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
-import type { ProblemData, Solution } from '@/types';
+import type { ProblemData, Solution, Step } from '@/types';
 import { getExampleProblem6 } from '@/logic/utils';
-import { solveSimplex, solveSimplexStep } from '@/logic/simplexSolver';
-import { extractSolutionFromSteps, solveArtificial, solveArtificialStep } from '@/logic/artificial';
+import { createInitialArtificialState, solveArtificial } from '@/logic/artificial';
 import { computeObjectiveFromX } from '@/logic/solverCommon';
+import { createInitialSimplexState, solveSimplex } from '@/logic/simplexMethod';
+import { extractSolutionFromSteps, solveStepMode } from '@/logic/solver';
 
 export const useSimplexSolver = (initialProblem?: ProblemData) => {
   const [fractions, setFractions] = useState<boolean>(false);
@@ -40,10 +41,15 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
         return prev;
       }
 
-      const steps = basis.length === 0
-        ? solveArtificialStep(prev.problem, [])
-        : solveSimplexStep(prev.problem, basis, []);
+      let steps: Step[] = [];
+      if (basis.length === 0) {
+        const initialState = createInitialArtificialState(prev.problem)
+        steps = solveStepMode(prev.problem, [], initialState, 'artificial')
 
+      } else {
+        const initialState = createInitialSimplexState(prev.problem, basis)
+        steps = solveStepMode(prev.problem, [], initialState, 'artificial')
+      }
       return {
         ...prev,
         steps,
@@ -69,9 +75,17 @@ export const useSimplexSolver = (initialProblem?: ProblemData) => {
           rowVariables: [...step.rowVariables],
         }));
 
-      const steps = basis.length === 0
-        ? solveArtificialStep(prev.problem, truncatedSteps, pivotIndex)
-        : solveSimplexStep(prev.problem, basis, truncatedSteps, pivotIndex);
+      let steps: Step[] = []
+      if (basis.length === 0) {
+        const initialState = createInitialArtificialState(prev.problem)
+        steps = solveStepMode(prev.problem, truncatedSteps, initialState, "artificial", pivotIndex)
+
+      } else {
+        const initialState = createInitialSimplexState(prev.problem, basis)
+        steps = solveStepMode(prev.problem, truncatedSteps, initialState, 'simplex', pivotIndex)
+      }
+
+
 
       const x = extractSolutionFromSteps(prev.problem, steps);
 

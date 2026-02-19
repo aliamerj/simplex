@@ -2,8 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { Calculator, Github } from 'lucide-react'
-import { Button } from './components/ui/button.tsx'
+import { Calculator } from 'lucide-react'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -15,12 +14,6 @@ createRoot(document.getElementById('root')!).render(
             <h1 className="text-2xl font-bold text-gray-900">Оптимизационный <span className='hidden sm:inline'>Решатель</span></h1>
             <p className="text-sm text-gray-600 hidden sm:inline">Лабораторная работа по методам оптимизации</p>
           </div>
-        </div>
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" size="sm" onClick={() => window.open("https://github.com/aliamerj/simplex")}>
-            <Github className="mr-2 h-4 w-4" />
-            Github
-          </Button>
         </div>
       </div>
     </header>
